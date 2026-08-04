@@ -22,9 +22,10 @@ client = OpenAI(
 WATCH_DIR = os.getenv("WATCH_FOLDER")
 MD_DIR = os.getenv("MD_OUTPUT")
 MEM_DIR = os.getenv("MEMORY_DB")
-LOG_DIR = "/home/ubuntu/study_bot/logs"
+LOG_DIR = os.getenv("LOG_DIR", "/home/ubuntu/study_bot/logs")
+os.makedirs(LOG_DIR, exist_ok=True)
 TG_TOKEN = os.getenv("TG_BOT_TOKEN")
-ADMIN_ID = int(os.getenv("TG_ADMIN_ID"))
+ADMIN_ID = int(os.getenv("TG_ADMIN_ID", "0"))
 MODEL = os.getenv("LLM_MODEL")
 
 # 日志工具
@@ -181,7 +182,7 @@ def handle_command(msg):
 def morning_reminder():
     while True:
         now = datetime.datetime.now()
-        if now.hour == int(os.getenv("REMIND_HOUR")) and now.minute == 0:
+        if now.hour == int(os.getenv("REMIND_HOUR", "8")) and now.minute == 0:
             rev_text = get_daily_review()
             try:
                 bot.send_message(ADMIN_ID, "【早间复习推送】\n" + rev_text)

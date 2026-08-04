@@ -1,6 +1,8 @@
 import os
 import time
 import threading
+import atexit
+from concurrent.futures import ThreadPoolExecutor
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 from pypdf import PdfReader
@@ -10,6 +12,10 @@ from llm_summary import generate_knowledge_points, llm_request
 # 记录已经处理过的文件，避免重复触发
 processed_files = dict()  # {filepath: timestamp} 用于过期清理
 LOCK = threading.Lock()
+
+# 限制同时处理的PDF数量，避免海量文件时无限开线程
+executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="pdf_watcher")
+atexit.register(executor.shutdown, wait=False)
 
 # 允许处理的后缀
 SUPPORT_SUFFIX = {".pdf"}
@@ -115,9 +121,8 @@ class FileChangeHandler(FileSystemEventHandler):
                 return
             processed_files[file_path] = now
 
-        # 子线程执行，不阻塞监听
-        task_thread = threading.Thread(target=handle_new_pdf, args=(file_path,), daemon=True)
-        task_thread.start()
+        # 提交线程池执行，限制并发数，不阻塞监听
+        executor.submit(handle_new_pdf, file_path)
 
 def clean_stale_records():
     """后台定时清理过期文件记录，防止内存持续上涨"""

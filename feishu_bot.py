@@ -40,6 +40,7 @@ user_last_paper = {}
 cache_lock = threading.Lock()
 
 def load_test_cache():
+    """从磁盘加载试题缓存（程序启动时调用一次）"""
     if not os.path.exists(TEST_CACHE_FILE):
         return {}
     try:
@@ -56,26 +57,28 @@ def save_test_cache(data):
     except Exception as e:
         print(f"⚠️试题缓存保存失败：{str(e)}")
 
+# 启动时一次性载入内存，后续读写都基于内存，避免每条指令都读磁盘
+test_cache_data = load_test_cache()
+
 def clean_expired_test_records():
+    global user_last_paper
     now = time.time()
+    modified = False
     with cache_lock:
-        cache_data = load_test_cache()
-        modified = False
-        for open_id in list(cache_data.keys()):
-            record_list = cache_data[open_id]
+        for open_id in list(test_cache_data.keys()):
+            record_list = test_cache_data[open_id]
             new_records = []
             for rec in record_list:
                 if now - rec["create_time"] < TEST_CACHE_TTL:
                     new_records.append(rec)
                 else:
                     modified = True
-            cache_data[open_id] = new_records
-            if len(cache_data[open_id]) == 0:
-                del cache_data[open_id]
+            test_cache_data[open_id] = new_records
+            if len(test_cache_data[open_id]) == 0:
+                del test_cache_data[open_id]
         if modified:
-            save_test_cache(cache_data)
-        global user_last_paper
-        user_last_paper = cache_data
+            save_test_cache(test_cache_data)
+        user_last_paper = test_cache_data
 
 def add_test_record(open_id: str, archive_id: int, question: str, answer: str):
     now = time.time()
@@ -86,18 +89,16 @@ def add_test_record(open_id: str, archive_id: int, question: str, answer: str):
         "create_time": now
     }
     with cache_lock:
-        cache_data = load_test_cache()
-        if open_id not in cache_data:
-            cache_data[open_id] = []
-        cache_data[open_id].append(new_record)
-        save_test_cache(cache_data)
+        if open_id not in test_cache_data:
+            test_cache_data[open_id] = []
+        test_cache_data[open_id].append(new_record)
+        save_test_cache(test_cache_data)
         global user_last_paper
-        user_last_paper = cache_data
+        user_last_paper = test_cache_data
 
 def get_latest_by_archive_id(open_id: str, target_archive_id: int):
     with cache_lock:
-        cache_data = load_test_cache()
-        records = cache_data.get(open_id, [])
+        records = test_cache_data.get(open_id, [])
         for rec in reversed(records):
             if rec["archive_id"] == target_archive_id:
                 return rec
@@ -105,8 +106,7 @@ def get_latest_by_archive_id(open_id: str, target_archive_id: int):
 
 def get_latest_all_record(open_id: str):
     with cache_lock:
-        cache_data = load_test_cache()
-        records = cache_data.get(open_id, [])
+        records = test_cache_data.get(open_id, [])
         if not records:
             return None
         return records[-1]
@@ -114,9 +114,7 @@ def get_latest_all_record(open_id: str):
 def list_all_user_test_records(open_id: str):
     clean_expired_test_records()
     with cache_lock:
-        cache_data = load_test_cache()
-        records = cache_data.get(open_id, [])
-        return records
+        return test_cache_data.get(open_id, [])
 
 processed_event = {}
 event_lock = threading.Lock()
@@ -273,6 +271,8 @@ def ai_simplify_filename(raw_name: str, subject: str) -> str:
 
 def clean_document_text(raw_text: str) -> str:
     raw_text = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', "", raw_text)
+    # 英文单词跨行时补空格，避免粘连成错误单词
+    raw_text = re.sub(r"([A-Za-z])\n(?=[A-Za-z])", r"\1 ", raw_text)
     raw_text = re.sub(r"([^。！？；：\n])\n", r"\1", raw_text)
     raw_text = re.sub(r"\n{2,}", "\n\n", raw_text)
     raw_text = re.sub(r"\s+", " ", raw_text)
@@ -722,21 +722,13 @@ def process_message_task(event_data):
                 if len(parts)>=2 and parts[0].lower()=="id":
                     try:
                         target_id=int(parts[1])
-                        from archive_db import get_archive_by_id
-                        row = get_archive_by_id(target_id)
-                        if not row:
+                        from archive_db import delete_archive_by_id
+                        deleted_name = delete_archive_by_id(target_id)
+                        if not deleted_name:
                             send_msg(receive_id,"找不到该归档ID")
                             return
-                        if os.path.exists(row["save_path"]):
-                            os.remove(row["save_path"])
-                        import sqlite3
-                        conn = sqlite3.connect(config.ARCHIVE_DB_PATH)
-                        cur = conn.cursor()
-                        cur.execute("DELETE FROM document_archive WHERE id=?",(target_id,))
-                        conn.commit()
-                        conn.close()
                         remove_archive_from_kb(target_id)
-                        send_msg(receive_id,f"✅删除归档ID:{target_id} {row['filename']}")
+                        send_msg(receive_id,f"✅删除归档ID:{target_id} {deleted_name}")
                     except ValueError:
                         send_msg(receive_id,"用法 /del id 数字")
                     return

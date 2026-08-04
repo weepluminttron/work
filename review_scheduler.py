@@ -11,13 +11,19 @@ from config import MEMORY_DB_PATH, REVIEW_PUSH_HOUR, FEISHU_WEBHOOK
 
 DB_LOCK = threading.Lock()
 
+# 模块级复用连接，避免每次操作都新建连接
+_db_conn = None
+
 def get_db_conn():
-    """获取数据库连接，开启WAL + 超时，多线程安全"""
-    conn = sqlite3.connect(MEMORY_DB_PATH, timeout=20.0)
-    conn.execute("PRAGMA journal_mode=WAL;")
-    conn.execute("PRAGMA synchronous=NORMAL;")
-    conn.execute("PRAGMA wal_autocheckpoint = 1000;")
-    return conn
+    """获取数据库连接（进程内复用一条连接），开启WAL + 超时，多线程安全"""
+    global _db_conn
+    if _db_conn is None:
+        conn = sqlite3.connect(MEMORY_DB_PATH, timeout=20.0, check_same_thread=False)
+        conn.execute("PRAGMA journal_mode=WAL;")
+        conn.execute("PRAGMA synchronous=NORMAL;")
+        conn.execute("PRAGMA wal_autocheckpoint = 1000;")
+        _db_conn = conn
+    return _db_conn
 
 def init_memory_db():
     """初始化数据表 + 自动迁移字段（解决旧表缺少stability/difficulty报错）"""
@@ -62,7 +68,6 @@ def init_memory_db():
             cur.execute("ALTER TABLE memory_items ADD COLUMN difficulty REAL DEFAULT 2.5")
 
         conn.commit()
-        conn.close()
 
 def calc_fsrs_interval(stability: float, difficulty: float, rating: int):
     """
@@ -111,7 +116,6 @@ def add_memory_item(subject: str, content_summary: str):
             first_interval
         ))
         conn.commit()
-        conn.close()
     return True
 
 def review_item(item_id: int, rating: int):
@@ -128,7 +132,6 @@ def review_item(item_id: int, rating: int):
         """, (item_id,))
         row = cur.fetchone()
         if not row:
-            conn.close()
             return False
         s, d = row
         new_s, new_d, ivl = calc_fsrs_interval(s, d, rating)
@@ -146,7 +149,6 @@ def review_item(item_id: int, rating: int):
             item_id
         ))
         conn.commit()
-        conn.close()
     return True
 
 def get_all_review_records():
@@ -162,7 +164,6 @@ def get_all_review_records():
         ORDER BY next_review ASC, subject ASC
         """, (today_str,))
         rows = cur.fetchall()
-        conn.close()
 
     if not rows:
         return "暂无到期复习卡片"
@@ -195,7 +196,6 @@ def save_daily_tasks(archive_id: int, subject: str, task_list: list):
             VALUES (?, ?, ?, ?)
             """, (archive_id, subject, idx, task))
         conn.commit()
-        conn.close()
 
 def get_archive_progress(archive_id: int):
     """获取归档文档全部学习进度"""
@@ -211,7 +211,6 @@ def get_archive_progress(archive_id: int):
         ORDER BY day_no ASC
         """, (archive_id,))
         rows = cur.fetchall()
-        conn.close()
     return rows
 
 def mark_task_finished(archive_id: int, day_num: int):
@@ -228,7 +227,6 @@ def mark_task_finished(archive_id: int, day_num: int):
         """, (today, archive_id, day_num))
         conn.commit()
         affected = cur.rowcount
-        conn.close()
     return affected > 0
 
 def get_today_learning_tasks():
@@ -248,7 +246,6 @@ def get_today_learning_tasks():
         ORDER BY archive_id, day_no ASC
         """)
         rows = cur.fetchall()
-        conn.close()
     if not rows:
         return "📚今日暂无待学习任务\n使用 /daily id xxx 生成学习计划"
     output = "📚今日待学习任务清单：\n"
@@ -274,7 +271,6 @@ def get_all_cards():
             ORDER BY next_review ASC
         """)
         rows = cur.fetchall()
-        conn.close()
 
     for r in rows:
         result.append({

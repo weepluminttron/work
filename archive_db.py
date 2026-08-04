@@ -177,6 +177,32 @@ def delete_archive_file(subject: str, keypoint: str, filename: str) -> str:
     conn.close()
     return f"✅成功删除归档：{filename}"
 
+def delete_archive_by_id(archive_id: int) -> Optional[str]:
+    """按真实ID删除归档：删除磁盘文件 + 数据库记录
+    返回被删除的文件名；记录不存在返回 None
+    """
+    conn = get_db_conn()
+    cursor = conn.cursor()
+    row = cursor.execute(
+        "SELECT id, save_path, filename FROM document_archive WHERE id = ?",
+        (archive_id,)
+    ).fetchone()
+    if not row:
+        conn.close()
+        return None
+    file_path = row["save_path"]
+    filename = row["filename"]
+    try:
+        if os.path.exists(file_path):
+            os.remove(file_path)
+    except Exception as e:
+        conn.close()
+        raise e
+    cursor.execute("DELETE FROM document_archive WHERE id = ?", (row["id"],))
+    conn.commit()
+    conn.close()
+    return filename
+
 def search_archive(keyword: str) -> List[Dict]:
     """简单搜索：匹配科目/知识点/文件名"""
     conn = get_db_conn()
