@@ -747,12 +747,44 @@ def process_message_task(event_data):
 /polish 德语 你的文本
 /polish 英语 你的文本
 /polish 你的文本（自动识别语言）
+/polish id 归档ID（润色归档文档）
+/polish card 卡片ID（润色记忆卡片）
 可以在文本前附上修改要求，例如：
 /polish 德语 改得更口语化一点：原文内容
 """)
                     return
                 first, _, rest = body.partition(" ")
-                if first in ("德语", "德", "de", "英语", "英", "en"):
+                if first == "id":
+                    try:
+                        aid = int(rest.strip())
+                    except ValueError:
+                        send_msg(receive_id, "用法：/polish id 归档ID")
+                        return
+                    from archive_db import get_archive_by_id
+                    row = get_archive_by_id(aid)
+                    if not row:
+                        send_msg(receive_id, f"❌找不到归档ID {aid}")
+                        return
+                    lang = ""
+                    text = row["file_text"]
+                    if not text or len(text.strip()) < 20:
+                        send_msg(receive_id, "该归档文档没有可用的文本内容")
+                        return
+                elif first == "card":
+                    try:
+                        cid = int(rest.strip())
+                    except ValueError:
+                        send_msg(receive_id, "用法：/polish card 卡片ID")
+                        return
+                    from review_scheduler import get_all_cards
+                    cards = get_all_cards()
+                    target = next((c for c in cards if c["id"] == cid), None)
+                    if not target:
+                        send_msg(receive_id, f"❌找不到卡片ID {cid}")
+                        return
+                    lang = ""
+                    text = target["content"]
+                elif first in ("德语", "德", "de", "英语", "英", "en"):
                     lang = first
                     text = rest.strip()
                 else:
@@ -795,7 +827,7 @@ def process_message_task(event_data):
 /save 科目 知识点 手动归档最近文件
 /del id 数字 删除归档文档（同步清理向量库）
 /rebuild_kb 全量重建向量知识库
-/polish 德语/英语 文本 ｜ /改写 文本 ✍️润色修改德语/英语文本（可附修改要求）
+/polish 德语/英语 文本 ｜ /polish id 归档ID ｜ /polish card 卡片ID ✍️润色修改德语/英语文本
 /tip 展示指令、归档清单、记忆卡片清单
 上传PDF/DOC/DOCX/PPTX → 自动归档+自动出题+自动入库向量库
 💡直接发送文字问题（不带/），自动检索本地文档进行问答
