@@ -1013,7 +1013,7 @@ def task_future_callback(future):
         print(traceback.format_exc())
 
 def handle_card_action(open_id: str, cmd: str):
-    """处理互动卡片按钮点击"""
+    """处理互动卡片按钮点击，处理完成后再次发送菜单方便继续操作"""
     try:
         if cmd == "help":
             send_long_msg(open_id, build_help_text())
@@ -1027,16 +1027,16 @@ def handle_card_action(open_id: str, cmd: str):
             send_long_msg(open_id, f"【今日复习计划】\n{format_msg(plan)}")
         elif cmd == "list_test":
             records = list_all_user_test_records(open_id)
-            if not records:
+            if records:
+                lines = ["📋试题清单（30分钟有效期）："]
+                for idx, r in enumerate(records, 1):
+                    aid = r["archive_id"]
+                    desc = f"归档ID={aid}" if aid != 0 else "临时文本出题"
+                    lines.append(f"{idx}. {desc}")
+                lines.append("\n/answer id 数字 查询对应习题答案")
+                send_msg(open_id, "\n".join(lines))
+            else:
                 send_msg(open_id, "📋暂无试题记录")
-                return
-            lines = ["📋试题清单（30分钟有效期）："]
-            for idx, r in enumerate(records, 1):
-                aid = r["archive_id"]
-                desc = f"归档ID={aid}" if aid != 0 else "临时文本出题"
-                lines.append(f"{idx}. {desc}")
-            lines.append("\n/answer id 数字 查询对应习题答案")
-            send_msg(open_id, "\n".join(lines))
         elif cmd == "polish":
             send_msg(open_id, """📝润色用法：
 /polish 德语 你的文本
@@ -1054,8 +1054,12 @@ def handle_card_action(open_id: str, cmd: str):
                 send_msg(open_id, f"❌重建知识库失败：{str(e)}")
         elif cmd == "tip":
             send_interactive_card(open_id, build_menu_card())
+            return
         else:
             send_msg(open_id, f"未知操作：{cmd}")
+            return
+        # 处理完成后再次发送菜单，方便继续点选
+        send_interactive_card(open_id, build_menu_card())
     except Exception as e:
         import traceback
         traceback.print_exc()
