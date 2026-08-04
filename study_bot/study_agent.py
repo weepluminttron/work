@@ -6,14 +6,17 @@ import subprocess
 from dotenv import load_dotenv
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
-import openai
+from openai import OpenAI
 import telebot
 from scipy.special import expit
 
 # 加载环境变量
 load_dotenv()
-openai.api_key = os.getenv("LLM_API_KEY")
-openai.base_url = os.getenv("LLM_BASE_URL")
+# 新版 openai SDK 改用客户端方式（openai>=1.0 已移除 openai.ChatCompletion 旧接口）
+client = OpenAI(
+    api_key=os.getenv("LLM_API_KEY"),
+    base_url=os.getenv("LLM_BASE_URL")
+)
 
 # 全局路径配置
 WATCH_DIR = os.getenv("WATCH_FOLDER")
@@ -47,12 +50,12 @@ def pdf_to_text(pdf_path) -> str:
 # 2. LLM 统一调用函数
 def llm_chat(prompt: str) -> str:
     try:
-        resp = openai.ChatCompletion.create(
+        resp = client.chat.completions.create(
             model=MODEL,
             messages=[{"role": "user", "content": prompt}],
             temperature=0.3
         )
-        return resp["choices"][0]["message"]["content"].strip()
+        return resp.choices[0].message.content.strip()
     except Exception as e:
         log(f"大模型调用失败: {str(e)}")
         return ""

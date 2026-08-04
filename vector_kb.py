@@ -1,5 +1,5 @@
 import chromadb
-from archive_db import get_all_archive_summary, get_archive_by_id
+from archive_db import get_all_archive_items, get_archive_by_id
 import config
 import re
 import requests
@@ -35,9 +35,11 @@ def split_text_custom(text: str, chunk_size=600, chunk_overlap=100):
         chunk = text[start:cut_pos].strip()
         if chunk:
             chunks.append(chunk)
-        start = cut_pos - chunk_overlap
-        if start <= 0:
-            start = cut_pos
+        # 修复：保证每次循环都向前推进，避免短文档/无合适分隔符时死循环
+        next_start = cut_pos - chunk_overlap
+        if next_start <= start:
+            next_start = cut_pos
+        start = next_start
     return chunks
 
 def clean_text(txt: str) -> str:
@@ -72,8 +74,8 @@ def rebuild_kb():
         name=COLLECTION_NAME,
         metadata={"hnsw:space": "cosine"}
     )
-    # 修复点：先获取所有归档ID列表
-    summary_list = get_all_archive_summary()
+    # 获取全部归档记录（按归档时间升序）
+    summary_list = get_all_archive_items()
     count = 0
     for item in summary_list:
         # 适配你的summary结构，假设item为字典，包含id

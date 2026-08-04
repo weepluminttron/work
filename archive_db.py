@@ -8,8 +8,10 @@ import config
 DB_FILE = config.ARCHIVE_DB_PATH
 
 def get_db_conn():
-    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
+    conn = sqlite3.connect(DB_FILE, timeout=20.0, check_same_thread=False)
     conn.row_factory = sqlite3.Row
+    # 多线程并发时避免直接报 "database is locked"
+    conn.execute("PRAGMA busy_timeout=20000")
     return conn
 
 def init_db():
@@ -103,27 +105,41 @@ def query_by_subject(subject: str) -> List[Dict]:
     conn.close()
     return [dict(r) for r in rows]
 
+def get_all_archive_items() -> List[Dict]:
+    """获取全部归档记录（供向量库重建等需要遍历的场景使用）"""
+    conn = get_db_conn()
+    cursor = conn.cursor()
+    rows = cursor.execute(
+        "SELECT * FROM document_archive ORDER BY create_ts ASC"
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
 def get_all_archive_summary() -> str:
     """生成汇总文本，给 /tip 指令调用
     展示连续视觉序号，按归档时间升序；删除指令使用真实ID
     """
     conn = get_db_conn()
     cursor = conn.cursor()
-    rows = cursor.execute("SELECT DISTINCT subject FROM document_archive").fetchall()
+    # 一次查询取回全部记录，按科目+归档时间排序，避免逐科目重复查询
+    rows = cursor.execute("""
+        SELECT id, subject, filename, keypoint, create_ts
+        FROM document_archive
+        ORDER BY subject ASC, create_ts ASC
+    """).fetchall()
     conn.close()
     if not rows:
         return "📂暂无归档资料"
     output = "📚已归档科目清单：\n💡【[]内为展示序号，删除请使用真实ID：/del id 数字】\n"
+    current_subject = None
+    show_index = 1
     for r in rows:
-        subj = r["subject"]
-        docs = query_by_subject(subj)
-        # 按归档时间升序排序（最早文档排在上方）
-        docs.sort(key=lambda x: x["create_ts"])
-        output += f"\n【{subj}】\n"
-        show_index = 1
-        for doc in docs:
-            output += f" • [{show_index}] 真实ID:{doc['id']} {doc['filename']} | {doc['keypoint']}\n"
-            show_index += 1
+        if r["subject"] != current_subject:
+            output += f"\n【{r['subject']}】\n"
+            current_subject = r["subject"]
+            show_index = 1
+        output += f" • [{show_index}] 真实ID:{r['id']} {r['filename']} | {r['keypoint']}\n"
+        show_index += 1
     return output
 
 def delete_archive_file(subject: str, keypoint: str, filename: str) -> str:
