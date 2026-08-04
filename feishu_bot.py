@@ -223,6 +223,112 @@ def send_msg(open_id, text):
         print(f"❌调用发送消息接口异常：{str(e)}")
         return None
 
+def send_interactive_card(open_id, card: dict):
+    """发送飞书互动卡片（带按钮）"""
+    token = get_valid_token()
+    if not token:
+        print("无法发送互动卡片，Token为空")
+        return None
+    url = "https://open.feishu.cn/open-apis/im/v1/messages"
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    payload = {
+        "receive_id": open_id,
+        "msg_type": "interactive",
+        "content": json.dumps(card)
+    }
+    params = {"receive_id_type": "open_id"}
+    try:
+        with requests.post(url, headers=headers, params=params, json=payload, timeout=10) as resp:
+            result = resp.json()
+            if result.get("code") != 0:
+                print(f"⚠️互动卡片发送失败 返回：{result}")
+            return result
+    except Exception as e:
+        print(f"❌调用发送互动卡片接口异常：{str(e)}")
+        return None
+
+def build_help_text() -> str:
+    """完整指令清单文本"""
+    return """🤖可用指令清单：
+/review 获取今日复习计划
+/add 科目 知识点 新增间隔重复记忆卡片
+/rate 卡片ID 1~4 复习打分
+/test 科目 内容 ｜ /test id 归档ID 生成自测题
+/answer 查看最新答案 ｜ /answer id 归档ID 指定习题答案
+/list_test 列出最近试题记录
+/plan id 归档ID [days N] 🆕根据归档文档生成完整中长期学习计划
+/daily id 归档ID [days N] [import] 🆕生成每日任务，import自动导入记忆卡片
+/done id 归档ID day N 🆕打卡完成第N天学习任务
+/progress id 归档ID 🆕查看学习进度
+/save 科目 知识点 手动归档最近文件
+/del id 数字 删除归档文档（同步清理向量库）
+/rebuild_kb 全量重建向量知识库
+/polish 德语/英语 文本 ｜ /polish id 归档ID ｜ /polish card 卡片ID ✍️润色修改德语/英语文本
+/tip 打开互动菜单
+上传PDF/DOC/DOCX/PPTX → 自动归档+自动出题+自动入库向量库
+💡直接发送文字问题（不带/），自动检索本地文档进行问答
+"""
+
+def build_archive_list_text() -> str:
+    """归档清单文本"""
+    from archive_db import get_all_archive_summary
+    archive_info = get_all_archive_summary()
+    if isinstance(archive_info, str):
+        return archive_info
+    archive_lines = ["📂归档清单："]
+    if isinstance(archive_info, list):
+        for item in archive_info:
+            if isinstance(item, dict):
+                aid = item.get("id", "")
+                subj = item.get("subject", "")
+                fname = item.get("filename", "")
+                archive_lines.append(f"ID:{aid} | {subj} | {fname}")
+            else:
+                print(f"[警告]归档列表非法数据，跳过，类型:{type(item)},内容:{item}")
+    else:
+        archive_lines.append("⚠️归档数据读取异常")
+    return "\n".join(archive_lines)
+
+def build_card_list_text() -> str:
+    """记忆卡片清单文本"""
+    from review_scheduler import get_all_cards
+    card_list = get_all_cards()
+    card_section = ["🧠间隔重复记忆卡片列表："]
+    if not card_list:
+        card_section.append("暂无记忆卡片，使用 /add 添加")
+    else:
+        for c in card_list:
+            if isinstance(c, dict):
+                card_section.append(f"【卡片ID:{c['id']}】[{c['subject']}] {c['content']}")
+            else:
+                print(f"[警告]记忆卡片异常数据：{c}")
+    return "\n".join(card_section)
+
+def build_menu_card() -> dict:
+    """互动菜单卡片（/tip 回复）"""
+    return {
+        "config": {"wide_screen_mode": True},
+        "header": {"title": {"tag": "plain_text", "content": "📚 学习助手菜单"}, "template": "blue"},
+        "elements": [
+            {"tag": "div", "text": {"tag": "lark_md", "content": "点击按钮即可执行，选择你需要的功能："}},
+            {"tag": "action", "actions": [
+                {"tag": "button", "text": {"tag": "plain_text", "content": "📋 指令清单"}, "value": {"cmd": "help"}},
+                {"tag": "button", "text": {"tag": "plain_text", "content": "🔄 今日复习"}, "value": {"cmd": "review"}}
+            ]},
+            {"tag": "action", "actions": [
+                {"tag": "button", "text": {"tag": "plain_text", "content": "📝 试题记录"}, "value": {"cmd": "list_test"}},
+                {"tag": "button", "text": {"tag": "plain_text", "content": "🗂 归档清单"}, "value": {"cmd": "archives"}}
+            ]},
+            {"tag": "action", "actions": [
+                {"tag": "button", "text": {"tag": "plain_text", "content": "🧠 记忆卡片"}, "value": {"cmd": "cards"}},
+                {"tag": "button", "text": {"tag": "plain_text", "content": "✍️ 文本润色"}, "value": {"cmd": "polish"}}
+            ]},
+            {"tag": "action", "actions": [
+                {"tag": "button", "text": {"tag": "plain_text", "content": "🗑 重建知识库"}, "value": {"cmd": "rebuild_kb"}}
+            ]}
+        ]
+    }
+
 def format_msg(raw_text: str) -> str:
     text = raw_text.replace("\\\\(", "$")
     text = text.replace("\\\\)", "$")
@@ -813,57 +919,7 @@ def process_message_task(event_data):
                     send_msg(receive_id, f"❌重建知识库失败：{str(e)}")
 
             elif content == "/tip":
-                cmd_text = """🤖可用指令清单：
-/review 获取今日复习计划
-/add 科目 知识点 新增间隔重复记忆卡片
-/rate 卡片ID 1~4 复习打分
-/test 科目 内容 ｜ /test id 归档ID 生成自测题
-/answer 查看最新答案 ｜ /answer id 归档ID 指定习题答案
-/list_test 列出最近试题记录
-/plan id 归档ID [days N] 🆕根据归档文档生成完整中长期学习计划
-/daily id 归档ID [days N] [import] 🆕生成每日任务，import自动导入记忆卡片
-/done id 归档ID day N 🆕打卡完成第N天学习任务
-/progress id 归档ID 🆕查看学习进度
-/save 科目 知识点 手动归档最近文件
-/del id 数字 删除归档文档（同步清理向量库）
-/rebuild_kb 全量重建向量知识库
-/polish 德语/英语 文本 ｜ /polish id 归档ID ｜ /polish card 卡片ID ✍️润色修改德语/英语文本
-/tip 展示指令、归档清单、记忆卡片清单
-上传PDF/DOC/DOCX/PPTX → 自动归档+自动出题+自动入库向量库
-💡直接发送文字问题（不带/），自动检索本地文档进行问答
-"""
-                from archive_db import get_all_archive_summary
-                archive_info = get_all_archive_summary()
-
-                from review_scheduler import get_all_cards
-                card_list = get_all_cards()
-                card_section = ["\n🧠间隔重复记忆卡片列表："]
-                if not card_list:
-                    card_section.append("暂无记忆卡片，使用 /add 添加")
-                else:
-                    for c in card_list:
-                        if isinstance(c, dict):
-                            card_section.append(f"【卡片ID:{c['id']}】[{c['subject']}] {c['content']}")
-                        else:
-                            print(f"[警告]记忆卡片异常数据：{c}")
-
-                archive_lines = ["📂归档清单："]
-                if isinstance(archive_info, str):
-                    archive_lines.append(archive_info)
-                elif isinstance(archive_info, list):
-                    for item in archive_info:
-                        if isinstance(item, dict):
-                            aid = item.get("id", "")
-                            subj = item.get("subject", "")
-                            fname = item.get("filename", "")
-                            archive_lines.append(f"ID:{aid} | {subj} | {fname}")
-                        else:
-                            print(f"[警告]归档列表非法数据，跳过，类型:{type(item)},内容:{item}")
-                else:
-                    archive_lines.append("⚠️归档数据读取异常")
-
-                full_msg = cmd_text + "\n" + "\n".join(archive_lines) + "\n" + "\n".join(card_section)
-                send_long_msg(receive_id, full_msg)
+                send_interactive_card(receive_id, build_menu_card())
 
             else:
                 send_msg(receive_id, "🤖正在检索本地归档资料，请稍候...")
@@ -956,12 +1012,94 @@ def task_future_callback(future):
         print("====线程池任务捕获异常====")
         print(traceback.format_exc())
 
+def handle_card_action(open_id: str, cmd: str):
+    """处理互动卡片按钮点击"""
+    try:
+        if cmd == "help":
+            send_long_msg(open_id, build_help_text())
+        elif cmd == "archives":
+            send_long_msg(open_id, build_archive_list_text())
+        elif cmd == "cards":
+            send_long_msg(open_id, build_card_list_text())
+        elif cmd == "review":
+            from review_scheduler import daily_review_task
+            plan = daily_review_task()
+            send_long_msg(open_id, f"【今日复习计划】\n{format_msg(plan)}")
+        elif cmd == "list_test":
+            records = list_all_user_test_records(open_id)
+            if not records:
+                send_msg(open_id, "📋暂无试题记录")
+                return
+            lines = ["📋试题清单（30分钟有效期）："]
+            for idx, r in enumerate(records, 1):
+                aid = r["archive_id"]
+                desc = f"归档ID={aid}" if aid != 0 else "临时文本出题"
+                lines.append(f"{idx}. {desc}")
+            lines.append("\n/answer id 数字 查询对应习题答案")
+            send_msg(open_id, "\n".join(lines))
+        elif cmd == "polish":
+            send_msg(open_id, """📝润色用法：
+/polish 德语 你的文本
+/polish 英语 你的文本
+/polish id 归档ID
+/polish card 卡片ID
+/改写 你的文本
+可在文本前附修改要求，例如：/polish 德语 更口语化：xxx""")
+        elif cmd == "rebuild_kb":
+            send_msg(open_id, "🔄开始重建全部向量知识库，耗时较长，请耐心等待...")
+            try:
+                rebuild_kb()
+                send_msg(open_id, "✅知识库重建完成！所有归档文档已载入向量库")
+            except Exception as e:
+                send_msg(open_id, f"❌重建知识库失败：{str(e)}")
+        elif cmd == "tip":
+            send_interactive_card(open_id, build_menu_card())
+        else:
+            send_msg(open_id, f"未知操作：{cmd}")
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        send_msg(open_id, f"❌操作失败：{str(e)}")
+
+def handle_card_action_event(data: dict):
+    """解析卡片点击回调并异步执行"""
+    event = data.get("event", {})
+    action = event.get("action", {})
+    value = action.get("value", {}) or {}
+    cmd = value.get("cmd", "")
+    operator = event.get("operator", {})
+    open_id = (
+        operator.get("operator_id", {}).get("open_id")
+        or operator.get("open_id")
+        or action.get("open_id")
+        or ""
+    )
+    if not open_id:
+        return jsonify({"toast": {"type": "error", "content": "无法识别操作者"}})
+    if not cmd:
+        return jsonify({"toast": {"type": "error", "content": "无效操作"}})
+    if open_id != config.ALLOW_OPEN_ID:
+        return jsonify({"toast": {"type": "error", "content": "权限不足"}})
+    executor.submit(handle_card_action, open_id, cmd)
+    return jsonify({"toast": {"type": "info", "content": "正在处理，请稍候..."}})
+
+@app.route("/feishu/card_callback", methods=["POST"])
+def card_callback():
+    try:
+        return handle_card_action_event(request.get_json(silent=True) or {})
+    except Exception as e:
+        print(f"卡片回调异常：{e}")
+        return jsonify({})
+
 @app.route("/feishu/callback", methods=["POST"])
 def callback():
     try:
         data = request.get_json()
         if "challenge" in data:
             return jsonify({"challenge": data["challenge"]})
+        # 卡片点击事件（如果走事件订阅方式推送）
+        if data.get("header", {}).get("event_type") == "card.action.trigger":
+            return handle_card_action_event(data)
         event_id = data.get("header", {}).get("event_id")
         with event_lock:
             if event_id in processed_event:
