@@ -12,6 +12,8 @@ LOG_DIR="$APP_DIR/logs"
 
 mkdir -p "$LOG_DIR"
 source "$VENV/bin/activate"
+# 让 Python 日志实时写入文件（默认重定向后会缓冲，看不到输出）
+export PYTHONUNBUFFERED=1
 cd "$APP_DIR"
 
 start_service() {
