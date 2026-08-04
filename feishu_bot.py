@@ -740,6 +740,36 @@ def process_message_task(event_data):
                 res = delete_archive_file(subj,"",fname)
                 send_msg(receive_id, res)
 
+            elif content.startswith("/polish") or content.startswith("/改写"):
+                body = content.removeprefix("/polish").removeprefix("/改写").strip()
+                if not body:
+                    send_msg(receive_id, """📝用法：
+/polish 德语 你的文本
+/polish 英语 你的文本
+/polish 你的文本（自动识别语言）
+可以在文本前附上修改要求，例如：
+/polish 德语 改得更口语化一点：原文内容
+""")
+                    return
+                first, _, rest = body.partition(" ")
+                if first in ("德语", "德", "de", "英语", "英", "en"):
+                    lang = first
+                    text = rest.strip()
+                else:
+                    lang = ""
+                    text = body
+                if not text:
+                    send_msg(receive_id, "请把需要修改的文本一起发给我")
+                    return
+                send_msg(receive_id, "🔄正在润色，请稍候...")
+                from llm_summary import polish_text
+                try:
+                    result = polish_text(text, lang)
+                except Exception as e:
+                    send_msg(receive_id, f"❌润色失败：{str(e)}")
+                    return
+                send_long_msg(receive_id, f"✍️润色结果：\n{result}")
+
             elif content == "/rebuild_kb":
                 send_msg(receive_id, "🔄开始重建全部向量知识库，耗时较长，请耐心等待...")
                 try:
@@ -765,6 +795,7 @@ def process_message_task(event_data):
 /save 科目 知识点 手动归档最近文件
 /del id 数字 删除归档文档（同步清理向量库）
 /rebuild_kb 全量重建向量知识库
+/polish 德语/英语 文本 ｜ /改写 文本 ✍️润色修改德语/英语文本（可附修改要求）
 /tip 展示指令、归档清单、记忆卡片清单
 上传PDF/DOC/DOCX/PPTX → 自动归档+自动出题+自动入库向量库
 💡直接发送文字问题（不带/），自动检索本地文档进行问答
