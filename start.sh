@@ -33,7 +33,7 @@ start_service() {
 
 # 1) 飞书机器人（gunicorn，端口 8080）
 start_service "飞书机器人" bot \
-    "gunicorn --bind 0.0.0.0:8080 --workers 1 --threads 3 --timeout 180 --max-requests 100 feishu_bot:app"
+    "gunicorn --bind 0.0.0.0:8080 --workers 1 --threads 3 --timeout 180 --max-requests 100 --capture-output feishu_bot:app"
 
 # 2) 每日早 8 点复习推送
 start_service "每日定时推送" scheduler "python review_scheduler.py"
