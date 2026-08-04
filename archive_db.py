@@ -1,0 +1,179 @@
+import sqlite3
+import os
+import time
+from typing import Optional, List, Dict
+import config
+
+# 数据库连接封装，线程安全简易封装
+DB_FILE = config.ARCHIVE_DB_PATH
+
+def get_db_conn():
+    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+def init_db():
+    """初始化归档数据表，自动兼容旧表，缺失字段自动新增（方案B核心）"""
+    conn = get_db_conn()
+    cursor = conn.cursor()
+
+    # 1. 创建表（不存在才新建）
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS document_archive (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        subject TEXT NOT NULL,
+        keypoint TEXT NOT NULL,
+        filename TEXT NOT NULL,
+        save_path TEXT NOT NULL,
+        file_text TEXT,
+        create_ts REAL NOT NULL
+    )
+    ''')
+    conn.commit()
+
+    # 2. 检查表字段，缺少file_text自动添加（兼容已有旧数据库）
+    cols = cursor.execute("PRAGMA table_info(document_archive);").fetchall()
+    col_names = [c[1] for c in cols]
+    if "file_text" not in col_names:
+        print("⚠️检测到旧数据库，自动新增 file_text 字段")
+        cursor.execute("ALTER TABLE document_archive ADD COLUMN file_text TEXT;")
+        conn.commit()
+
+    conn.close()
+    print("✅归档数据库初始化完成")
+
+def archive_file(subject: str, keypoint: str, file_bytes: bytes, original_filename: str, doc_text: str = "") -> tuple[str, int]:
+    """
+    保存PDF文件到本地study_docs目录，并写入数据库
+    :param subject: 科目
+    :param keypoint: 知识点/文档名称
+    :param file_bytes: 文件二进制
+    :param original_filename: 原始文件名
+    :param doc_text: 文档提取文本（存入file_text，供/test id出题）
+    :return: (文件存储路径, 新增记录id)
+    """
+    # 安全文件名处理
+    bad_chars = ['\\', '/', ':', '*', '?', '"', '<', '>', '|']
+    safe_name = original_filename
+    for c in bad_chars:
+        safe_name = safe_name.replace(c, "_")
+
+    # 构建存储路径
+    subject_dir = os.path.join(config.BASE_DOC_DIR, subject)
+    os.makedirs(subject_dir, exist_ok=True)
+    save_full_path = os.path.join(subject_dir, safe_name)
+
+    # 写入文件
+    with open(save_full_path, "wb") as f:
+        f.write(file_bytes)
+
+    # 入库（新增file_text字段）
+    conn = get_db_conn()
+    cursor = conn.cursor()
+    cursor.execute('''
+    INSERT INTO document_archive (subject, keypoint, filename, save_path, file_text, create_ts)
+    VALUES (?, ?, ?, ?, ?, ?)
+    ''', (subject, keypoint, safe_name, save_full_path, doc_text, time.time()))
+    new_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    return save_full_path, new_id
+
+def get_archive_by_id(archive_id: int) -> Optional[Dict]:
+    """【新增】根据归档ID查询单条记录，给 /test id xxx 使用"""
+    conn = get_db_conn()
+    cursor = conn.cursor()
+    row = cursor.execute(
+        "SELECT * FROM document_archive WHERE id = ?",
+        (archive_id,)
+    ).fetchone()
+    conn.close()
+    if not row:
+        return None
+    return dict(row)
+
+def query_by_subject(subject: str) -> List[Dict]:
+    """根据科目查询所有归档文档"""
+    conn = get_db_conn()
+    cursor = conn.cursor()
+    rows = cursor.execute(
+        "SELECT * FROM document_archive WHERE subject = ? ORDER BY create_ts DESC",
+        (subject,)
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+def get_all_archive_summary() -> str:
+    """生成汇总文本，给 /tip 指令调用
+    展示连续视觉序号，按归档时间升序；删除指令使用真实ID
+    """
+    conn = get_db_conn()
+    cursor = conn.cursor()
+    rows = cursor.execute("SELECT DISTINCT subject FROM document_archive").fetchall()
+    conn.close()
+    if not rows:
+        return "📂暂无归档资料"
+    output = "📚已归档科目清单：\n💡【[]内为展示序号，删除请使用真实ID：/del id 数字】\n"
+    for r in rows:
+        subj = r["subject"]
+        docs = query_by_subject(subj)
+        # 按归档时间升序排序（最早文档排在上方）
+        docs.sort(key=lambda x: x["create_ts"])
+        output += f"\n【{subj}】\n"
+        show_index = 1
+        for doc in docs:
+            output += f" • [{show_index}] 真实ID:{doc['id']} {doc['filename']} | {doc['keypoint']}\n"
+            show_index += 1
+    return output
+
+def delete_archive_file(subject: str, keypoint: str, filename: str) -> str:
+    """
+    删除归档文件 + 数据库记录
+    仅匹配 subject + filename，忽略keypoint参数
+    返回操作结果文本
+    """
+    conn = get_db_conn()
+    cursor = conn.cursor()
+    # 查询条件：科目 + 文件名，不再匹配keypoint
+    row = cursor.execute('''
+    SELECT save_path, id FROM document_archive
+    WHERE subject=? AND filename=?
+    ''', (subject, filename)).fetchone()
+
+    if not row:
+        conn.close()
+        return "❌未找到匹配归档记录，请核对科目、文件名"
+
+    file_path = row["save_path"]
+    record_id = row["id"]
+
+    # 删除磁盘文件
+    try:
+        if os.path.exists(file_path):
+            os.remove(file_path)
+    except Exception as e:
+        conn.close()
+        return f"⚠️数据库记录找到，但文件删除失败：{str(e)}"
+
+    # 删除数据库记录
+    cursor.execute("DELETE FROM document_archive WHERE id = ?", (record_id,))
+    conn.commit()
+    conn.close()
+    return f"✅成功删除归档：{filename}"
+
+def search_archive(keyword: str) -> List[Dict]:
+    """简单搜索：匹配科目/知识点/文件名"""
+    conn = get_db_conn()
+    cursor = conn.cursor()
+    like_str = f"%{keyword}%"
+    rows = cursor.execute('''
+    SELECT * FROM document_archive
+    WHERE subject LIKE ? OR keypoint LIKE ? OR filename LIKE ?
+    ORDER BY create_ts DESC
+    ''', (like_str, like_str, like_str)).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+if __name__ == "__main__":
+    # 本地测试代码
+    print(get_all_archive_summary())
