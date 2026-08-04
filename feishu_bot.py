@@ -250,20 +250,17 @@ def send_interactive_card(open_id, card: dict):
 def build_help_text() -> str:
     """完整指令清单文本"""
     return """🤖可用指令清单：
-/review 获取今日复习计划
-/add 科目 知识点 新增间隔重复记忆卡片
-/rate 卡片ID 1~4 复习打分
 /test 科目 内容 ｜ /test id 归档ID 生成自测题
 /answer 查看最新答案 ｜ /answer id 归档ID 指定习题答案
 /list_test 列出最近试题记录
 /plan id 归档ID [days N] 🆕根据归档文档生成完整中长期学习计划
-/daily id 归档ID [days N] [import] 🆕生成每日任务，import自动导入记忆卡片
+/daily id 归档ID [days N] 🆕生成每日学习任务
 /done id 归档ID day N 🆕打卡完成第N天学习任务
 /progress id 归档ID 🆕查看学习进度
 /save 科目 知识点 手动归档最近文件
 /del id 数字 删除归档文档（同步清理向量库）
 /rebuild_kb 全量重建向量知识库
-/polish 德语/英语 文本 ｜ /polish id 归档ID ｜ /polish card 卡片ID ✍️润色修改德语/英语文本
+/polish 德语/英语 文本 ｜ /polish id 归档ID ✍️润色修改德语/英语文本
 /tip 打开互动菜单
 上传PDF/DOC/DOCX/PPTX → 自动归档+自动出题+自动入库向量库
 💡直接发送文字问题（不带/），自动检索本地文档进行问答
@@ -289,21 +286,6 @@ def build_archive_list_text() -> str:
         archive_lines.append("⚠️归档数据读取异常")
     return "\n".join(archive_lines)
 
-def build_card_list_text() -> str:
-    """记忆卡片清单文本"""
-    from review_scheduler import get_all_cards
-    card_list = get_all_cards()
-    card_section = ["🧠间隔重复记忆卡片列表："]
-    if not card_list:
-        card_section.append("暂无记忆卡片，使用 /add 添加")
-    else:
-        for c in card_list:
-            if isinstance(c, dict):
-                card_section.append(f"【卡片ID:{c['id']}】[{c['subject']}] {c['content']}")
-            else:
-                print(f"[警告]记忆卡片异常数据：{c}")
-    return "\n".join(card_section)
-
 def build_menu_card() -> dict:
     """互动菜单卡片（/tip 回复）"""
     return {
@@ -313,14 +295,10 @@ def build_menu_card() -> dict:
             {"tag": "div", "text": {"tag": "lark_md", "content": "点击按钮即可执行，选择你需要的功能："}},
             {"tag": "action", "actions": [
                 {"tag": "button", "text": {"tag": "plain_text", "content": "📋 指令清单"}, "value": {"cmd": "help"}},
-                {"tag": "button", "text": {"tag": "plain_text", "content": "🔄 今日复习"}, "value": {"cmd": "review"}}
+                {"tag": "button", "text": {"tag": "plain_text", "content": "📝 试题记录"}, "value": {"cmd": "list_test"}}
             ]},
             {"tag": "action", "actions": [
-                {"tag": "button", "text": {"tag": "plain_text", "content": "📝 试题记录"}, "value": {"cmd": "list_test"}},
-                {"tag": "button", "text": {"tag": "plain_text", "content": "🗂 归档清单"}, "value": {"cmd": "archives"}}
-            ]},
-            {"tag": "action", "actions": [
-                {"tag": "button", "text": {"tag": "plain_text", "content": "🧠 记忆卡片"}, "value": {"cmd": "cards"}},
+                {"tag": "button", "text": {"tag": "plain_text", "content": "🗂 归档清单"}, "value": {"cmd": "archives"}},
                 {"tag": "button", "text": {"tag": "plain_text", "content": "✍️ 文本润色"}, "value": {"cmd": "polish"}}
             ]},
             {"tag": "action", "actions": [
@@ -584,43 +562,7 @@ def process_message_task(event_data):
             content = json.loads(message["content"])["text"].strip()
             print("收到指令：", content)
 
-            if content == "/review":
-                from review_scheduler import daily_review_task
-                plan = daily_review_task()
-                send_long_msg(receive_id, f"【今日复习计划】\n{format_msg(plan)}")
-
-            elif content.startswith("/add"):
-                parts = content.split(maxsplit=2)
-                if len(parts) <3:
-                    send_msg(receive_id, "📝用法：/add 科目 知识点\n示例：/add 德语A1 der Pass 阳性名词：护照")
-                else:
-                    subject = parts[1]
-                    raw_summary = parts[2]
-                    clean_summary = ai_simplify_filename(raw_summary, subject)
-                    from review_scheduler import add_memory_item
-                    card_id = add_memory_item(subject, clean_summary)
-                    reply = f"✅记忆卡片录入成功\n卡片ID：{card_id}\n【科目】{subject}\n【内容】{clean_summary}\n发送 /rate 卡片ID 评分 进行复习"
-                    send_msg(receive_id, reply)
-
-            elif content.startswith("/rate"):
-                parts = content.split(maxsplit=2)
-                if len(parts)<3:
-                    send_msg(receive_id, "📝用法：/rate 卡片ID 评分\n1=遗忘｜2=困难｜3=良好｜4=轻松")
-                else:
-                    try:
-                        cid = int(parts[1])
-                        score = int(parts[2])
-                    except ValueError:
-                        send_msg(receive_id, "⚠️卡片ID、评分必须为数字")
-                        return
-                    from review_scheduler import review_item
-                    ok = review_item(cid, score)
-                    if ok:
-                        send_msg(receive_id, f"✅卡片{cid}评分完成，更新复习周期")
-                    else:
-                        send_msg(receive_id, "❌卡片不存在或分数非法")
-
-            elif content.startswith("/test"):
+            if content.startswith("/test"):
                 clean_expired_test_records()
                 parts = content.split(maxsplit=2)
                 archive_id = 0
@@ -723,19 +665,15 @@ def process_message_task(event_data):
                 parts = content.split()
                 aid = None
                 target_days = 5
-                import_flag = False
                 try:
                     aid = int(parts[2])
                     if len(parts) >=5 and parts[3].lower() == "days":
                         target_days = int(parts[4])
                         target_days = max(2, min(14, target_days))
-                    if "import" in parts:
-                        import_flag = True
                 except Exception:
                     send_msg(receive_id, """📖用法：
 /daily id 归档ID
 /daily id 归档ID days 6
-/daily id 归档ID days 5 import  # 自动把每日任务生成记忆卡片
 """)
                     return
                 from archive_db import get_archive_by_id
@@ -756,17 +694,8 @@ def process_message_task(event_data):
 {daily_task_text}
 💡打卡用法：/done id {aid} day 1 标记第1天完成
 📊进度查询：/progress id {aid}
-"""
+                """
                 send_long_msg(receive_id, output)
-
-                if import_flag:
-                    send_msg(receive_id, "🔄正在将每日任务批量录入记忆卡片...")
-                    from review_scheduler import add_memory_item
-                    card_count = 0
-                    for task in task_list:
-                        add_memory_item(row["subject"], task)
-                        card_count += 1
-                    send_msg(receive_id, f"✅批量导入完成！新增{card_count}条记忆卡片\n发送 /tip 查看全部卡片")
 
             elif content.startswith("/done id"):
                 parts = content.split()
@@ -779,7 +708,7 @@ def process_message_task(event_data):
                 from review_scheduler import mark_task_finished
                 ok = mark_task_finished(aid, day_num)
                 if ok:
-                    send_msg(receive_id, f"✅已标记归档ID:{aid} 第{day_num}天任务完成！\n记得使用 /review 复习记忆卡片")
+                    send_msg(receive_id, f"✅已标记归档ID:{aid} 第{day_num}天任务完成！")
                 else:
                     send_msg(receive_id, f"❌未找到对应任务，检查归档ID或天数是否正确")
 
@@ -854,7 +783,6 @@ def process_message_task(event_data):
 /polish 英语 你的文本
 /polish 你的文本（自动识别语言）
 /polish id 归档ID（润色归档文档）
-/polish card 卡片ID（润色记忆卡片）
 可以在文本前附上修改要求，例如：
 /polish 德语 改得更口语化一点：原文内容
 """)
@@ -876,20 +804,6 @@ def process_message_task(event_data):
                     if not text or len(text.strip()) < 20:
                         send_msg(receive_id, "该归档文档没有可用的文本内容")
                         return
-                elif first == "card":
-                    try:
-                        cid = int(rest.strip())
-                    except ValueError:
-                        send_msg(receive_id, "用法：/polish card 卡片ID")
-                        return
-                    from review_scheduler import get_all_cards
-                    cards = get_all_cards()
-                    target = next((c for c in cards if c["id"] == cid), None)
-                    if not target:
-                        send_msg(receive_id, f"❌找不到卡片ID {cid}")
-                        return
-                    lang = ""
-                    text = target["content"]
                 elif first in ("德语", "德", "de", "英语", "英", "en"):
                     lang = first
                     text = rest.strip()
@@ -1019,12 +933,6 @@ def handle_card_action(open_id: str, cmd: str):
             send_long_msg(open_id, build_help_text())
         elif cmd == "archives":
             send_long_msg(open_id, build_archive_list_text())
-        elif cmd == "cards":
-            send_long_msg(open_id, build_card_list_text())
-        elif cmd == "review":
-            from review_scheduler import daily_review_task
-            plan = daily_review_task()
-            send_long_msg(open_id, f"【今日复习计划】\n{format_msg(plan)}")
         elif cmd == "list_test":
             records = list_all_user_test_records(open_id)
             if records:
@@ -1042,7 +950,6 @@ def handle_card_action(open_id: str, cmd: str):
 /polish 德语 你的文本
 /polish 英语 你的文本
 /polish id 归档ID
-/polish card 卡片ID
 /改写 你的文本
 可在文本前附修改要求，例如：/polish 德语 更口语化：xxx""")
         elif cmd == "rebuild_kb":

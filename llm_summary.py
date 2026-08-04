@@ -68,19 +68,6 @@ def generate_test_questions(text: str, subject: str, num: int = 10) -> tuple[str
         answer_part = "⚠️AI输出未遵循分割标记，无法自动分离答案"
     return question_part, answer_part
 
-def generate_daily_review_plan(memory_records: str) -> str:
-    prompt = f"""
-现有间隔重复记忆卡片到期清单：
-{memory_records}
-
-请生成今日复习方案：
-1. 按科目分组
-2. 标注复习优先级（优先复习遗忘风险高的内容）
-3. 语言简洁清晰，适合直接推送
-4. 可以适当给出复习小建议
-    """
-    return llm_request(prompt)
-
 def polish_text(text: str, lang: str = "") -> str:
     """润色德语/英语文本：让文本流畅自然，并遵循用户附加的修改要求"""
     lang_map = {
