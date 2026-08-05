@@ -38,11 +38,19 @@ def init_memory_db():
             subject TEXT,
             day_no INTEGER,
             task_content TEXT,
+            start_date TEXT,
             complete_date TEXT,
             finished INTEGER DEFAULT 0,
             UNIQUE(archive_id, day_no)
         )
         """)
+
+        # 旧表自动补 start_date 字段，并把已有任务视为从今天开始
+        cur.execute("PRAGMA table_info(study_progress);")
+        columns = [row[1] for row in cur.fetchall()]
+        if "start_date" not in columns:
+            cur.execute("ALTER TABLE study_progress ADD COLUMN start_date TEXT")
+        cur.execute("UPDATE study_progress SET start_date = date('now') WHERE start_date IS NULL")
 
         conn.commit()
 
@@ -50,15 +58,16 @@ def init_memory_db():
 def save_daily_tasks(archive_id: int, subject: str, task_list: list):
     """保存拆分后的每日任务到进度表"""
     init_memory_db()
+    today = datetime.now().strftime("%Y-%m-%d")
     with DB_LOCK:
         conn = get_db_conn()
         cur = conn.cursor()
         for idx, task in enumerate(task_list, start=1):
             cur.execute("""
             INSERT OR IGNORE INTO study_progress
-            (archive_id, subject, day_no, task_content)
-            VALUES (?, ?, ?, ?)
-            """, (archive_id, subject, idx, task))
+            (archive_id, subject, day_no, task_content, start_date)
+            VALUES (?, ?, ?, ?, ?)
+            """, (archive_id, subject, idx, task, today))
         conn.commit()
 
 def get_archive_progress(archive_id: int):
@@ -94,14 +103,15 @@ def mark_task_finished(archive_id: int, day_num: int):
     return affected > 0
 
 def get_today_learning_tasks():
-    """获取今天该做的任务：每个归档只显示当前最靠前未完成的那一天"""
+    """获取今天该做的任务：按日历天数计算，未完成的天自动累计到下一天"""
     init_memory_db()
+    today_dt = datetime.now().date()
     with DB_LOCK:
         conn = get_db_conn()
         conn.row_factory = sqlite3.Row
         cur = conn.cursor()
         cur.execute("""
-        SELECT archive_id, subject, day_no, task_content
+        SELECT archive_id, subject, day_no, task_content, start_date
         FROM study_progress
         WHERE finished = 0
         ORDER BY archive_id ASC, day_no ASC
@@ -110,33 +120,50 @@ def get_today_learning_tasks():
     if not rows:
         return "🎉今日任务已全部完成！可以看看「额外任务」拓展学习"
 
-    # 每个归档只保留当前最早未完成的那一天
-    current = {}
+    # 每个归档的“今天是第几天” = 计划开始日期 到 今天的自然日差 + 1
+    current_day = {}
     for r in rows:
         key = r["archive_id"]
-        if key not in current or r["day_no"] < current[key]["day_no"]:
-            current[key] = {"subject": r["subject"], "day_no": r["day_no"], "tasks": [r["task_content"]]}
-        elif r["day_no"] == current[key]["day_no"]:
-            current[key]["tasks"].append(r["task_content"])
+        if key not in current_day:
+            try:
+                start = datetime.strptime(r["start_date"], "%Y-%m-%d").date()
+            except (TypeError, ValueError):
+                start = today_dt
+            current_day[key] = max(1, (today_dt - start).days + 1)
+
+    # 按 归档ID+天 分组，未完成且已到期的天都计入今日（自动累计）
+    groups = {}
+    for r in rows:
+        key = r["archive_id"]
+        if r["day_no"] > current_day[key]:
+            continue
+        gkey = (r["archive_id"], r["day_no"])
+        groups.setdefault(gkey, {"subject": r["subject"], "tasks": []})
+        groups[gkey]["tasks"].append(r["task_content"])
 
     output = "📌今日待办：\n"
-    for key in sorted(current):
-        item = current[key]
-        output += f"【归档ID{key}】{item['subject']} Day{item['day_no']}：\n"
-        for idx, t in enumerate(item["tasks"], 1):
-            output += f"{idx}. {t}\n"
+    for (aid, day_no) in sorted(groups):
+        item = groups[(aid, day_no)]
+        day_label = f"⏳补 Day{day_no}" if day_no < current_day[aid] else f"Day{day_no}"
+        output += f"【归档ID{aid}】{item['subject']} {day_label}：\n"
+        for t in item["tasks"]:
+            output += f"- {t}\n"
+    if not groups:
+        # 今天的任务都做完了，但后面还有未完成任务（属于额外任务）
+        return "🎉今日任务已完成！可以看看「额外任务」拓展学习"
     output += "\n💡做完后发送 /done id 归档ID day 天数 打卡，或用「额外任务」拓展学习"
     return output
 
 def get_extra_learning_tasks():
-    """额外任务：今日任务之后的可拓展学习内容"""
+    """额外任务：今天之后的可拓展学习内容（未完成且未到期的天）"""
     init_memory_db()
+    today_dt = datetime.now().date()
     with DB_LOCK:
         conn = get_db_conn()
         conn.row_factory = sqlite3.Row
         cur = conn.cursor()
         cur.execute("""
-        SELECT archive_id, subject, day_no, task_content
+        SELECT archive_id, subject, day_no, task_content, start_date
         FROM study_progress
         WHERE finished = 0
         ORDER BY archive_id ASC, day_no ASC
@@ -145,12 +172,17 @@ def get_extra_learning_tasks():
     if not rows:
         return "🎉所有任务都已完成，暂无额外任务"
 
-    current_days = {}
+    current_day = {}
     for r in rows:
         key = r["archive_id"]
-        current_days[key] = min(current_days.get(key, r["day_no"]), r["day_no"])
+        if key not in current_day:
+            try:
+                start = datetime.strptime(r["start_date"], "%Y-%m-%d").date()
+            except (TypeError, ValueError):
+                start = today_dt
+            current_day[key] = max(1, (today_dt - start).days + 1)
 
-    extra = [r for r in rows if r["day_no"] > current_days[r["archive_id"]]]
+    extra = [r for r in rows if r["day_no"] > current_day[r["archive_id"]]]
     if not extra:
         return "📌今日任务还没完成，完成后再来看「额外任务」拓展学习"
 
