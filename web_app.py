@@ -115,6 +115,7 @@ HELP_TEXT = """📚 网页版学习助手指令：
 /daily id 3 [days 5] 生成每日任务并保存
 /progress id 3      查看学习进度
 /done id 3 day 2    打卡完成第2天任务
+/del id 3           删除归档文档（同步清理知识库）
 /polish 德语 文本    润色德语/英语文本（或 /polish id 3）
 /merge 科目名        把同科目的所有文档合并为一条归档
 /mergeinfo id 3      查看合并归档包含哪些原文档
@@ -354,6 +355,18 @@ def handle_web_command(text: str) -> str:
             lines.append(f"Day{r['day_no']} {status} | {r['complete_date'] or '未打卡'}")
         return "\n".join(lines)
 
+    if cmd == "/del":
+        aid = _parse_aid(parts)
+        if aid is None:
+            return "用法：/del id 归档ID"
+        from archive_db import delete_archive_by_id
+        from vector_kb import remove_archive_from_kb
+        deleted = delete_archive_by_id(aid)
+        if not deleted:
+            return f"❌找不到归档ID {aid}"
+        remove_archive_from_kb(aid)
+        return f"✅已删除归档ID:{aid}（{deleted}），知识库已同步清理"
+
     if cmd == "/polish":
         body = text[len(cmd):].strip()
         if not body:
@@ -482,13 +495,26 @@ def options():
         for did, fname in docs:
             # 合并记录只显示合并内容名字，不显示原始文档列表
             label = fname if fname.startswith("【合并】") else f"ID{did} {fname}"
-            if next_cmd in ("plan", "daily", "done"):
+            if next_cmd == "delete":
+                payload = {"step": "confirm", "next": "delete", "aid": did}
+            elif next_cmd in ("plan", "daily", "done"):
                 payload = {"step": "days", "next": next_cmd, "subject": subject, "aid": did}
             else:
                 payload = {"step": "run", "cmd": f"/{next_cmd} id {did}"}
             options_list.append({"label": label, "payload": payload})
         print(f"📱网页版选项：选择文档（{subject}，共{len(docs)}个）")
         return jsonify({"ok": True, "prompt": f"② 选择文档（{subject}）：", "options": options_list})
+
+    if step == "confirm":
+        row = _get_archive(data.get("aid"))
+        if not row:
+            return jsonify({"ok": False, "error": "归档记录不存在，可能已被删除"})
+        fname = row.get("filename", "")
+        options_list = [{
+            "label": f"确认删除「{fname}」",
+            "payload": {"step": "run", "cmd": f"/del id {row['id']}"}
+        }]
+        return jsonify({"ok": True, "prompt": "③ 确认删除（删除后不可恢复）：", "options": options_list})
 
     if step == "days":
         days = data.get("days")
