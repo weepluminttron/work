@@ -42,6 +42,7 @@ HELP_TEXT = """📚 网页版学习助手指令：
 /progress id 3      查看学习进度
 /done id 3 day 2    打卡完成第2天任务
 /polish 德语 文本    润色德语/英语文本（或 /polish id 3）
+/merge 科目名        把同科目的所有文档合并为一条归档
 /rebuild            重建知识库
 /help               显示本清单
 
@@ -277,6 +278,24 @@ def handle_web_command(text: str) -> str:
         from llm_summary import polish_text
         return f"✍️润色结果：\n{polish_text(content, lang)}"
 
+    if cmd == "/merge":
+        subject = text[len(cmd):].strip()
+        if not subject:
+            return "用法：/merge 科目名"
+        from archive_db import merge_subject_archives
+        from vector_kb import add_archive_to_kb, remove_archive_from_kb
+        result = merge_subject_archives(subject)
+        if not result["ok"]:
+            return result["error"]
+        add_archive_to_kb(result["new_id"])
+        for oid in result["old_ids"]:
+            remove_archive_from_kb(oid)
+        return (f"✅合并完成！\n"
+                f"科目：{result['subject']}\n"
+                f"合并了 {result['count']} 份文档 → 新归档ID：{result['new_id']}\n"
+                f"原记录 {result['old_ids']} 已删除（磁盘上的原文件保留）\n\n"
+                f"继续学习：/cards id {result['new_id']}、/test id {result['new_id']}")
+
     if cmd == "/rebuild":
         from vector_kb import rebuild_kb
         rebuild_kb()
@@ -326,6 +345,12 @@ def options():
         return jsonify({"ok": True, "prompt": "① 选择科目：", "options": options_list})
 
     if step == "docs":
+        if next_cmd == "merge":
+            options_list = [{
+                "label": f"确认合并「{subject}」全部文档",
+                "payload": {"step": "run", "cmd": f"/merge {subject}"}
+            }]
+            return jsonify({"ok": True, "prompt": f"② 确认合并（{subject}）：", "options": options_list})
         docs = _list_docs(subject)
         options_list = []
         for did, fname in docs:

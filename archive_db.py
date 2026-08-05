@@ -81,6 +81,50 @@ def archive_file(subject: str, keypoint: str, file_bytes: bytes, original_filena
     conn.close()
     return save_full_path, new_id
 
+def create_merged_archive(subject: str, keypoint: str, filename: str, merged_text: str) -> int:
+    """创建合并归档记录（不保存实体文件），返回新记录ID"""
+    conn = get_db_conn()
+    cursor = conn.cursor()
+    cursor.execute('''
+    INSERT INTO document_archive (subject, keypoint, filename, save_path, file_text, create_ts)
+    VALUES (?, ?, ?, ?, ?, ?)
+    ''', (subject, keypoint, filename, "", merged_text, time.time()))
+    new_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    return new_id
+
+def delete_archive_record_by_id(archive_id: int) -> bool:
+    """只删除数据库记录（保留磁盘文件），供合并归档使用"""
+    conn = get_db_conn()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM document_archive WHERE id = ?", (archive_id,))
+    conn.commit()
+    affected = cursor.rowcount
+    conn.close()
+    return affected > 0
+
+def merge_subject_archives(subject: str) -> dict:
+    """把同科目的所有归档合并为一条记录（保留磁盘原文件，删除原记录）"""
+    docs = query_by_subject(subject)
+    if not docs:
+        return {"ok": False, "error": f"没有找到科目「{subject}」的归档文档"}
+    parts = []
+    for d in docs:
+        t = (d.get("file_text") or "").strip()
+        parts.append(f"【{d['filename']}】\n{t}")
+    merged_text = "\n\n==========\n\n".join(parts)[:20000]
+    new_id = create_merged_archive(
+        subject,
+        f"合并归档（{len(docs)}份文档）",
+        f"【合并】{subject}.txt",
+        merged_text
+    )
+    old_ids = [d["id"] for d in docs]
+    for oid in old_ids:
+        delete_archive_record_by_id(oid)
+    return {"ok": True, "new_id": new_id, "old_ids": old_ids, "count": len(docs), "subject": subject}
+
 def get_archive_by_id(archive_id: int) -> Optional[Dict]:
     """【新增】根据归档ID查询单条记录，给 /test id xxx 使用"""
     conn = get_db_conn()
