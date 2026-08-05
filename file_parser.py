@@ -143,6 +143,42 @@ def _friendly_api_error(status_code: int, resp_text: str) -> str:
     return f"视觉接口返回异常（{status_code}）：{resp_text[:200]}"
 
 
+def _ocr_image_bytes_local(file_bytes: bytes, mime: str = "image/png") -> str:
+    """使用本地 PaddleOCR 识别图片文字（免费，不需要 API 余额）"""
+    global _ocr_engine
+    try:
+        import numpy as np
+        from PIL import Image
+        from paddleocr import PaddleOCR
+        if _ocr_engine is None:
+            print("⏳初始化本地OCR引擎（首次使用较慢）")
+            _ocr_engine = PaddleOCR(
+                use_angle_cls=True,
+                lang="ch",
+                use_gpu=False,
+                use_doc_orientation_classify=False,
+                use_doc_unwarping=False,
+                use_textline_orientation=False,
+                enable_memory_optim=True,
+                rec_batch_num=1
+            )
+        img = Image.open(io.BytesIO(file_bytes))
+        arr = np.array(img.convert("RGB"))
+        res = _ocr_engine.ocr(arr, cls=True)
+        lines = []
+        if res and res[0]:
+            for line_info in res[0]:
+                if line_info and len(line_info) >= 2 and line_info[1]:
+                    lines.append(line_info[1][0])
+        return clean_document_text("\n".join(lines))
+    except ImportError:
+        print("⚠️本地OCR未安装：如需免费离线识别，请执行 pip install paddleocr paddlepaddle")
+        return ""
+    except Exception as e:
+        print(f"⚠️本地OCR识别失败：{e}")
+        return ""
+
+
 def extract_image_text(file_bytes: bytes, mime: str = "image/png") -> str:
     """调用云端视觉模型识别图片中的文字内容（硅基流动 Qwen-VL）"""
     global last_image_error
@@ -181,6 +217,11 @@ def extract_image_text(file_bytes: bytes, mime: str = "image/png") -> str:
             return clean_document_text(content)
         last_image_error = last_error
         print(f"⚠️图片识别全部模型失败，最后错误：{last_error}")
+        # API 不可用时（如余额不足）自动尝试免费本地 OCR
+        local_text = _ocr_image_bytes_local(file_bytes, mime)
+        if local_text.strip():
+            last_image_error = ""
+            return local_text
         return ""
     except Exception as e:
         last_image_error = str(e)
