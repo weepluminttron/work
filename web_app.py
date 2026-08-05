@@ -102,10 +102,16 @@ def _run_upload_task(task_id: str, filename: str, file_bytes: bytes):
         subj = auto_info["subject"]
         short_name = ai_simplify_filename(filename, subj)
         save_path, new_aid = archive_file(subj, short_name, file_bytes, filename, doc_text)
-        add_archive_to_kb(new_aid)
+        kb_note = ""
+        try:
+            add_archive_to_kb(new_aid)
+        except Exception as e:
+            print(f"⚠️归档ID {new_aid} 知识库入库失败（归档记录已保存）：{e}")
+            kb_note = f"\n⚠️知识库入库暂未完成：{e}\n可稍后在输入框发送 /rebuild 重建知识库"
         print(f"📱网页版归档完成：ID={new_aid} 科目={subj} 文件名={short_name}")
         reply = (f"✅归档成功！\n归档ID：{new_aid}\n科目：{subj}\n文件名：{short_name}\n\n"
-                 f"继续学习：\n/cards id {new_aid} 生成背诵卡片\n/test id {new_aid} 生成自测题\n/plan id {new_aid} 生成学习计划")
+                 f"继续学习：\n/cards id {new_aid} 生成背诵卡片\n/test id {new_aid} 生成自测题\n/plan id {new_aid} 生成学习计划"
+                 f"{kb_note}")
         _finish_task(task_id, "done", reply=reply)
     except Exception as e:
         import traceback
@@ -211,7 +217,7 @@ def _list_subjects():
     seen = set()
     subjects = []
     for it in items:
-        s = (it.get("subject") or "").strip()
+        s = (it.get("subject") or "").strip() or "未分类"
         if s and s not in seen:
             seen.add(s)
             subjects.append(s)
