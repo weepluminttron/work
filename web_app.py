@@ -46,6 +46,7 @@ HELP_TEXT = """📚 网页版学习助手指令：
 /done id 3 day 2    打卡完成第2天任务
 /polish 德语 文本    润色德语/英语文本（或 /polish id 3）
 /merge 科目名        把同科目的所有文档合并为一条归档
+/mergeinfo id 3      查看合并归档包含哪些原文档
 /rebuild            重建知识库
 /help               显示本清单
 
@@ -142,6 +143,19 @@ def _list_docs(subject: str):
     from archive_db import query_by_subject
     rows = query_by_subject(subject)
     return [(r["id"], r["filename"]) for r in rows]
+
+
+def _parse_merge_sources(text: str) -> list:
+    """从合并归档文本中解析【合并来源】列表"""
+    import re
+    m = re.search(r"【合并来源】\n(.*?)\n\n==========", text, re.DOTALL)
+    if not m:
+        return []
+    origins = []
+    for line in m.group(1).splitlines():
+        if ". " in line:
+            origins.append(line.split(". ", 1)[1].strip())
+    return origins
 
 
 def handle_web_command(text: str) -> str:
@@ -304,11 +318,24 @@ def handle_web_command(text: str) -> str:
         add_archive_to_kb(result["new_id"])
         for oid in result["old_ids"]:
             remove_archive_from_kb(oid)
-        return (f"✅合并完成！\n"
-                f"科目：{result['subject']}\n"
-                f"合并了 {result['count']} 份文档 → 新归档ID：{result['new_id']}\n"
-                f"原记录 {result['old_ids']} 与原文件已清理\n\n"
-                f"继续学习：/cards id {result['new_id']}、/test id {result['new_id']}")
+        reply = (f"✅合并完成！\n"
+                 f"科目：{result['subject']}\n"
+                 f"合并了 {result['count']} 份文档 → 新归档ID：{result['new_id']}\n"
+                 f"原记录 {result['old_ids']} 与原文件已清理\n\n"
+                 f"继续学习：/cards id {result['new_id']}、/test id {result['new_id']}")
+        return reply, [{"label": "📄 查看合并来源", "payload": {"step": "run", "cmd": f"/mergeinfo id {result['new_id']}"}}]
+
+    if cmd in ("/mergeinfo", "/sources"):
+        aid = _parse_aid(parts)
+        if aid is None:
+            return "用法：/mergeinfo id 归档ID"
+        row = _get_archive(aid)
+        if not row:
+            return f"❌未找到归档ID {aid}"
+        origins = _parse_merge_sources(row.get("file_text") or "")
+        if not origins:
+            return "该归档不是合并记录，或没有来源信息"
+        return "该合并归档包含以下原文档：\n" + "\n".join(f"{i}. {name}" for i, name in enumerate(origins, 1))
 
     if cmd == "/rebuild":
         from vector_kb import rebuild_kb

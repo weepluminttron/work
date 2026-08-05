@@ -110,13 +110,16 @@ def merge_subject_archives(subject: str) -> dict:
     if not docs:
         return {"ok": False, "error": f"没有找到科目「{subject}」的归档文档"}
     parts = []
+    origin_list = []
     for d in docs:
+        origin_list.append(d["filename"])
         t = (d.get("file_text") or "").strip()
         parts.append(f"【{d['filename']}】\n{t}")
-    merged_text = "\n\n==========\n\n".join(parts)[:20000]
+    source_block = "【合并来源】\n" + "\n".join(f"{i}. {name}" for i, name in enumerate(origin_list, 1)) + "\n\n==========\n\n"
+    merged_text = (source_block + "\n\n==========\n\n".join(parts))[:20000]
     new_id = create_merged_archive(
         subject,
-        f"合并归档（{len(docs)}份文档）",
+        f"合并归档（{len(docs)}份）",
         f"【合并】{subject}.txt",
         merged_text
     )
@@ -129,7 +132,7 @@ def merge_subject_archives(subject: str) -> dict:
             except Exception as e:
                 print(f"⚠️合并时删除原文件失败 {sp}: {e}")
         delete_archive_record_by_id(d["id"])
-    return {"ok": True, "new_id": new_id, "old_ids": old_ids, "count": len(docs), "subject": subject}
+    return {"ok": True, "new_id": new_id, "old_ids": old_ids, "count": len(docs), "subject": subject, "origin_list": origin_list}
 
 def get_archive_by_id(archive_id: int) -> Optional[Dict]:
     """【新增】根据归档ID查询单条记录，给 /test id xxx 使用"""
