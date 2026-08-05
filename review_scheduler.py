@@ -94,27 +94,74 @@ def mark_task_finished(archive_id: int, day_num: int):
     return affected > 0
 
 def get_today_learning_tasks():
-    """
-    获取今日待完成学习任务
-    逻辑：未打卡的所有任务，作为当日待办
-    """
+    """获取今天该做的任务：每个归档只显示当前最靠前未完成的那一天"""
     init_memory_db()
     with DB_LOCK:
         conn = get_db_conn()
         conn.row_factory = sqlite3.Row
         cur = conn.cursor()
         cur.execute("""
-        SELECT DISTINCT archive_id, subject, day_no, task_content
+        SELECT archive_id, subject, day_no, task_content
         FROM study_progress
         WHERE finished = 0
-        ORDER BY archive_id, day_no ASC
+        ORDER BY archive_id ASC, day_no ASC
         """)
         rows = cur.fetchall()
     if not rows:
-        return "📚今日暂无待学习任务\n使用 /daily id xxx 生成学习计划"
-    output = "📚今日待学习任务清单：\n"
+        return "🎉今日任务已全部完成！可以看看「额外任务」拓展学习"
+
+    # 每个归档只保留当前最早未完成的那一天
+    current = {}
     for r in rows:
-        output += f"【归档ID{r['archive_id']}】{r['subject']} Day{r['day_no']}：{r['task_content']}\n"
+        key = r["archive_id"]
+        if key not in current or r["day_no"] < current[key]["day_no"]:
+            current[key] = {"subject": r["subject"], "day_no": r["day_no"], "tasks": [r["task_content"]]}
+        elif r["day_no"] == current[key]["day_no"]:
+            current[key]["tasks"].append(r["task_content"])
+
+    output = "📌今日待办：\n"
+    for key in sorted(current):
+        item = current[key]
+        output += f"【归档ID{key}】{item['subject']} Day{item['day_no']}：\n"
+        for idx, t in enumerate(item["tasks"], 1):
+            output += f"{idx}. {t}\n"
+    output += "\n💡做完后发送 /done id 归档ID day 天数 打卡，或用「额外任务」拓展学习"
+    return output
+
+def get_extra_learning_tasks():
+    """额外任务：今日任务之后的可拓展学习内容"""
+    init_memory_db()
+    with DB_LOCK:
+        conn = get_db_conn()
+        conn.row_factory = sqlite3.Row
+        cur = conn.cursor()
+        cur.execute("""
+        SELECT archive_id, subject, day_no, task_content
+        FROM study_progress
+        WHERE finished = 0
+        ORDER BY archive_id ASC, day_no ASC
+        """)
+        rows = cur.fetchall()
+    if not rows:
+        return "🎉所有任务都已完成，暂无额外任务"
+
+    current_days = {}
+    for r in rows:
+        key = r["archive_id"]
+        current_days[key] = min(current_days.get(key, r["day_no"]), r["day_no"])
+
+    extra = [r for r in rows if r["day_no"] > current_days[r["archive_id"]]]
+    if not extra:
+        return "📌今日任务还没完成，完成后再来看「额外任务」拓展学习"
+
+    output = "🚀额外任务（今日任务完成后拓展学习）：\n"
+    current_archive = None
+    for r in extra:
+        if r["archive_id"] != current_archive:
+            output += f"\n【归档ID{r['archive_id']}】{r['subject']}\n"
+            current_archive = r["archive_id"]
+        output += f"Day{r['day_no']}：{r['task_content']}\n"
+    output += "\n💡这些是今天之后的内容，学有余力时提前预习"
     return output
 
 # ===================== 晨间推送：今日学习任务 =====================

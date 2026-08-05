@@ -109,6 +109,7 @@ def _run_upload_task(task_id: str, filename: str, file_bytes: bytes):
 HELP_TEXT = """📚 网页版学习助手指令：
 /list               查看归档清单
 /today              查看今日待办任务
+/extra              查看额外任务（今日完成后的拓展学习）
 /cards id 3         把归档文档生成背诵卡片
 /test id 3          把归档文档生成自测题
 /plan id 3 [days 7]  生成完整学习计划
@@ -249,6 +250,10 @@ def handle_web_command(text: str) -> str:
     if cmd == "/today":
         from review_scheduler import get_today_learning_tasks
         return get_today_learning_tasks()
+
+    if cmd == "/extra":
+        from review_scheduler import get_extra_learning_tasks
+        return get_extra_learning_tasks()
 
     if cmd == "/cards":
         aid = _parse_aid(parts)
