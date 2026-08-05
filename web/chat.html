@@ -136,14 +136,35 @@ function renderMarkdown(text){
     }
     if (/^\s*[-•]\s+/.test(line)){
       const items = [];
-      while (i < lines.length && /^\s*[-•]\s+/.test(lines[i])){ items.push(inlineFormat(lines[i].replace(/^\s*[-•]\s+/, ''))); i++; }
-      out.push('<ul>' + items.map(x => '<li>' + x + '</li>').join('') + '</ul>');
+      while (i < lines.length){
+        const t = lines[i].trim();
+        if (/^[-•]\s+/.test(t)){
+          items.push('<li>' + inlineFormat(t.replace(/^[-•]\s+/, '')) + '</li>');
+          i++;
+        } else if (t === ''){
+          i++;
+        } else {
+          break;
+        }
+      }
+      out.push('<ul>' + items.join('') + '</ul>');
       continue;
     }
     if (/^\s*\d+\.\s+/.test(line)){
       const items = [];
-      while (i < lines.length && /^\s*\d+\.\s+/.test(lines[i])){ items.push(inlineFormat(lines[i].replace(/^\s*\d+\.\s+/, ''))); i++; }
-      out.push('<ol>' + items.map(x => '<li>' + x + '</li>').join('') + '</ol>');
+      while (i < lines.length){
+        const t = lines[i].trim();
+        if (/^\d+\.\s+/.test(t)){
+          const num = parseInt(t, 10);
+          items.push('<li value="' + num + '">' + inlineFormat(t.replace(/^\d+\.\s+/, '')) + '</li>');
+          i++;
+        } else if (t === ''){
+          i++;
+        } else {
+          break;
+        }
+      }
+      out.push('<ol>' + items.join('') + '</ol>');
       continue;
     }
     const para = [];
