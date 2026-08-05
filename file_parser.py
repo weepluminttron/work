@@ -33,6 +33,7 @@ def _init_ocr_engine():
     _ocr_init_attempted = True
     from paddleocr import PaddleOCR
     param_sets = [
+        {"lang": "ch", "use_gpu": False, "enable_mkldnn": False},
         {"lang": "ch", "use_gpu": False},
         {"lang": "ch", "use_gpu": False, "use_angle_cls": True},
         {
@@ -61,12 +62,13 @@ def _ocr_call(img) -> list:
         return []
     res = None
     try:
-        res = _ocr_engine.ocr(img, cls=True)
+        res = _ocr_engine.ocr(img)
     except Exception as e1:
         try:
             res = _ocr_engine.predict(img)
         except Exception as e2:
             print(f"⚠️本地OCR调用失败：ocr={e1}，predict={e2}")
+            print("💡如果是 PaddlePaddle 3.3.0 的 oneDNN 兼容问题，请在服务器执行：pip install paddlepaddle==3.2.2")
             return []
     lines = []
     if not res:
