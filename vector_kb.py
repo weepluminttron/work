@@ -35,6 +35,10 @@ def _get_local_embedder():
     """加载本地多语言向量模型（首次使用需要下载模型文件）"""
     global _local_embedder
     if _local_embedder is None:
+        # 国内服务器下载模型：走镜像站并禁用 Xet 协议（避免 401 下载失败）
+        import os
+        os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
+        os.environ.setdefault("HF_HUB_DISABLE_XET", "1")
         from fastembed import TextEmbedding
         last_err = ""
         for model_name in LOCAL_EMBEDDING_MODELS:
