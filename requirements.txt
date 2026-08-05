@@ -1,9 +1,18 @@
-watchdog==3.0.0
-PyPDF2==3.0.1
-python-pptx==0.6.23
-python-docx==1.2.0
-APScheduler==3.10.4
-python-telegram-bot==20.7
-requests==2.31.0
-# 移除固定版本锁，交由pip自动匹配满足所有库要求
+# 学习助手（飞书机器人 + 网页版）运行依赖
+Flask>=3.0
+gunicorn>=21.2
+requests>=2.31
+watchdog>=3.0
+pypdf>=4.0
+PyMuPDF>=1.23
+python-pptx>=0.6.23
+python-docx>=1.2.0
+APScheduler>=3.10
+chromadb>=1.5
 PyYAML>=6.0.3
+
+# 可选：扫描版PDF OCR（体积大，按需安装）
+# paddleocr>=2.7
+# paddlepaddle>=2.6
+
+# study_bot（Telegram 机器人）另需：openai、pyTelegramBotAPI、scipy、python-dotenv

@@ -270,6 +270,8 @@ def handle_web_command(text: str) -> str:
             return f"❌未找到归档ID {aid}"
         from llm_summary import generate_test_questions
         q, a = generate_test_questions(row["file_text"], row["subject"], 20)
+        if len(_web_answers) >= 100:
+            _web_answers.pop(next(iter(_web_answers)))
         _web_answers[aid] = a
         print(f"📱网页版已生成20道题并暂存答案：归档ID {aid}")
         return q, [{"label": "📖 查看答案", "payload": {"step": "run", "cmd": f"/answer id {aid}"}}]
@@ -424,6 +426,7 @@ def chat():
     print(f"📱网页版收到消息：{text[:200]}")
     if not text:
         return jsonify({"ok": False, "error": "消息为空"})
+    _prune_tasks()
     task_id = uuid.uuid4().hex[:12]
     _finish_task(task_id, "running")
     threading.Thread(target=_run_task, args=(task_id, text), daemon=True).start()
@@ -516,6 +519,7 @@ def upload():
     if not file_bytes:
         return jsonify({"ok": False, "error": "文件内容为空"})
     print(f"📱网页版收到文件：{filename}（{len(file_bytes)} 字节）")
+    _prune_tasks()
     task_id = uuid.uuid4().hex[:12]
     _finish_task(task_id, "running")
     threading.Thread(target=_run_upload_task, args=(task_id, filename, file_bytes), daemon=True).start()

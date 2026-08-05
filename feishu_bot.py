@@ -12,6 +12,7 @@ import tempfile
 import gc
 import os
 import fitz
+from file_parser import clean_document_text
 from concurrent.futures import ThreadPoolExecutor
 from flask import Flask, request, jsonify
 import config
@@ -321,16 +322,6 @@ def build_menu_button_card() -> dict:
             ]}
         ]
     }
-
-def clean_document_text(raw_text: str) -> str:
-    raw_text = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', "", raw_text)
-    # 英文单词跨行时补空格，避免粘连成错误单词
-    raw_text = re.sub(r"([A-Za-z])\n(?=[A-Za-z])", r"\1 ", raw_text)
-    raw_text = re.sub(r"([^。！？；：\n])\n", r"\1", raw_text)
-    raw_text = re.sub(r"\n{2,}", "\n\n", raw_text)
-    raw_text = re.sub(r"\s+", " ", raw_text)
-    raw_text = re.sub(r"第\s*\d+\s*页\s*/?\d*", "", raw_text)
-    return raw_text.strip()
 
 _ocr_engine = None
 def ocr_pdf_stream(pdf_bytes: bytes) -> str:
