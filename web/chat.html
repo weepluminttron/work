@@ -31,8 +31,13 @@
   .msg.bot .bubble th { background: #eef3ff; }
   .msg.bot .bubble hr { border: none; border-top: 1px dashed #dde3ee; margin: 8px 0; }
   .bubble.typing { color: #999; }
-  .chips { display: flex; gap: 8px; padding: 8px 12px; overflow-x: auto; background: #fff; border-top: 1px solid #eef1f7; }
-  .chip { flex-shrink: 0; padding: 7px 13px; border-radius: 18px; background: #eef3ff; color: #4a7dff; font-size: 13px; cursor: pointer; border: none; }
+  .wbar { display: flex; background: #fff; border-top: 1px solid #eef1f7; }
+  .wbtn { flex: 1; padding: 11px 0; border: none; background: #fff; color: #333; font-size: 14px; cursor: pointer; border-right: 1px solid #f0f2f7; }
+  .wbtn:last-child { border-right: none; }
+  .wbtn.active { color: #4a7dff; font-weight: 600; }
+  .submenu { background: #fff; border-top: 1px solid #eef1f7; box-shadow: 0 -2px 8px rgba(0,0,0,.05); max-height: 240px; overflow-y: auto; }
+  .submenu button { display: block; width: 100%; text-align: left; padding: 11px 16px; border: none; background: #fff; font-size: 14px; border-bottom: 1px solid #f4f6fb; cursor: pointer; }
+  .submenu button:active { background: #f0f4ff; }
   .option-box { display: flex; flex-wrap: wrap; gap: 8px; background: #fff; border: 1px solid #e5e9f2; border-radius: 16px; padding: 10px; max-width: 82%; }
   .opt-btn { padding: 8px 14px; border-radius: 16px; background: #eef3ff; color: #4a7dff; font-size: 14px; border: none; cursor: pointer; }
   footer { display: flex; gap: 8px; padding: 10px 12px; background: #fff; border-top: 1px solid #eef1f7; }
@@ -61,22 +66,11 @@
 <div id="app" class="hidden">
   <header>📚 学习助手 <button id="logout">退出</button></header>
   <main id="messages"></main>
-  <div class="chips">
-    <button class="chip" data-cmd="/help">📋 指令</button>
-    <button class="chip" data-cmd="/list">🗂 归档清单</button>
-    <button class="chip" data-next="merge">🗂 合并归档</button>
-    <button class="chip" data-next="mergeinfo">📄 合并来源</button>
-    <button class="chip" data-cmd="/today">📌 今日任务</button>
-    <button class="chip" data-cmd="/extra">🚀 额外任务</button>
-    <button class="chip" data-next="cards">📇 背诵卡片</button>
-    <button class="chip" data-next="test">📝 自测题</button>
-    <button class="chip" data-next="plan">📅 学习计划</button>
-    <button class="chip" data-next="daily">📆 每日任务</button>
-    <button class="chip" data-next="progress">📊 学习进度</button>
-    <button class="chip" data-next="done">✅ 打卡</button>
-    <button class="chip" data-next="delete">🗑 删除文档</button>
-    <button class="chip" data-next="polish">✍️ 文本润色</button>
-    <button class="chip" data-cmd="/rebuild">🔄 重建知识库</button>
+  <div id="submenu" class="submenu hidden"></div>
+  <div class="wbar">
+    <button class="wbtn" data-group="study">📚 学习</button>
+    <button class="wbtn" data-group="materials">📁 资料</button>
+    <button class="wbtn" data-group="more">⋯ 更多</button>
   </div>
   <footer>
     <button id="attach" title="上传文件（PDF/DOC/DOCX/PPTX）">📎</button>
@@ -357,12 +351,66 @@ $('#input').addEventListener('keydown', e => { if (e.key === 'Enter') send(); })
 $('#attach').addEventListener('click', () => $('#fileInput').click());
 $('#fileInput').addEventListener('change', upload);
 $('#logout').addEventListener('click', async () => { await fetch('/api/logout', {method: 'POST'}); showLogin(); });
-document.querySelectorAll('.chip').forEach(c => c.addEventListener('click', () => {
-  if (c.dataset.next) { startOptions(c.dataset.next); return; }
-  let cmd = c.dataset.cmd;
-  $('#input').value = cmd;
-  send();
+const MENU = {
+  study: [
+    {label: '📌 今日任务', cmd: '/today'},
+    {label: '🚀 额外任务', cmd: '/extra'},
+    {label: '📇 背诵卡片', next: 'cards'},
+    {label: '📝 自测题', next: 'test'},
+    {label: '📅 学习计划', next: 'plan'},
+    {label: '📆 每日任务', next: 'daily'},
+    {label: '📊 学习进度', next: 'progress'},
+    {label: '✅ 打卡', next: 'done'}
+  ],
+  materials: [
+    {label: '🗂 归档清单', cmd: '/list'},
+    {label: '🗂 合并归档', next: 'merge'},
+    {label: '📄 合并来源', next: 'mergeinfo'},
+    {label: '🗑 删除文档', next: 'delete'},
+    {label: '📎 上传文件', action: 'upload'}
+  ],
+  more: [
+    {label: '📋 指令清单', cmd: '/help'},
+    {label: '✍️ 文本润色', next: 'polish'},
+    {label: '🔄 重建知识库', cmd: '/rebuild'}
+  ]
+};
+
+let activeGroup = null;
+
+function hideSubmenu(){
+  activeGroup = null;
+  $('#submenu').classList.add('hidden');
+  document.querySelectorAll('.wbtn').forEach(w => w.classList.remove('active'));
+}
+
+function showSubmenu(group){
+  activeGroup = group;
+  const box = $('#submenu');
+  box.innerHTML = '';
+  MENU[group].forEach(item => {
+    const b = document.createElement('button');
+    b.textContent = item.label;
+    b.addEventListener('click', () => {
+      hideSubmenu();
+      if (item.action === 'upload'){ $('#fileInput').click(); return; }
+      if (item.next){ startOptions(item.next); return; }
+      runChat(item.cmd);
+    });
+    box.appendChild(b);
+  });
+  box.classList.remove('hidden');
+  document.querySelectorAll('.wbtn').forEach(w => w.classList.toggle('active', w.dataset.group === group));
+}
+
+document.querySelectorAll('.wbtn').forEach(w => w.addEventListener('click', (e) => {
+  e.stopPropagation();
+  const g = w.dataset.group;
+  if (activeGroup === g){ hideSubmenu(); } else { showSubmenu(g); }
 }));
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('#submenu') && !e.target.closest('.wbar')) hideSubmenu();
+});
 
 init();
 </script>
