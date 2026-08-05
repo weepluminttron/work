@@ -12,7 +12,12 @@ COLLECTION_NAME = "study_docs"
 SIM_THRESHOLD = 0.65
 
 # ===================== 本地免费向量模型（无需硅基流动余额） =====================
-LOCAL_EMBEDDING_MODEL = "intfloat/multilingual-e5-small"
+# 按顺序尝试的本地多语言模型（不同 fastembed 版本支持情况不同，全部为384维）
+LOCAL_EMBEDDING_MODELS = [
+    "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+    "intfloat/multilingual-e5-small",
+    "BAAI/bge-small-en-v1.5",
+]
 EMBEDDING_DIM = 384
 _local_embedder = None
 _rebuilding = False
@@ -31,9 +36,21 @@ def _get_local_embedder():
     global _local_embedder
     if _local_embedder is None:
         from fastembed import TextEmbedding
-        print("⏳加载本地向量模型（首次需要下载，约500MB）...")
-        _local_embedder = TextEmbedding(model_name=LOCAL_EMBEDDING_MODEL)
-        print("✅本地向量模型加载完成")
+        last_err = ""
+        for model_name in LOCAL_EMBEDDING_MODELS:
+            print(f"⏳尝试加载本地向量模型：{model_name}")
+            try:
+                _local_embedder = TextEmbedding(model_name=model_name)
+                print(f"✅本地向量模型加载完成：{model_name}")
+                return _local_embedder
+            except Exception as e:
+                last_err = str(e)
+                print(f"⚠️模型 {model_name} 加载失败：{e}")
+                continue
+        supported = [m.get("model") for m in TextEmbedding.list_supported_models()]
+        print(f"❌所有候选模型都不可用，fastembed 支持列表：{supported}")
+        print(f"最后错误：{last_err}")
+        raise ValueError("本地向量模型不可用，请安装支持多语言的 fastembed 版本")
     return _local_embedder
 
 
