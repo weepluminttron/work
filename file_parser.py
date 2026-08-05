@@ -139,22 +139,27 @@ def extract_image_text(file_bytes: bytes, mime: str = "image/png") -> str:
             "Authorization": f"Bearer {config.EMB_API_KEY}",
             "Content-Type": "application/json"
         }
-        payload = {
-            "model": "Qwen/Qwen2.5-VL-7B-Instruct",
-            "messages": [{
-                "role": "user",
-                "content": [
-                    {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}},
-                    {"type": "text", "text": "请完整识别并输出图片中的文字内容；如果图片没有文字，请用一两句话概括图片内容。"}
-                ]
-            }],
-            "max_tokens": 2000
-        }
-        resp = _requests.post(url, headers=headers, json=payload, timeout=60)
-        resp.raise_for_status()
-        data = resp.json()
-        content = data["choices"][0]["message"]["content"]
-        return clean_document_text(content)
+        image_block = {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}}
+        text_block = {"type": "text", "text": "请完整识别并输出图片中的文字内容；如果图片没有文字，请用一两句话概括图片内容。"}
+        # 按顺序尝试的视觉模型（需与硅基流动账号实际可用的模型一致）
+        models = ["Qwen/Qwen3-VL-8B-Instruct"]
+        last_error = ""
+        for model in models:
+            payload = {
+                "model": model,
+                "messages": [{"role": "user", "content": [image_block, text_block]}],
+                "max_tokens": 2000
+            }
+            resp = _requests.post(url, headers=headers, json=payload, timeout=60)
+            if resp.status_code != 200:
+                last_error = f"{resp.status_code}: {resp.text[:400]}"
+                print(f"⚠️图片识别模型 {model} 失败：{last_error}")
+                continue
+            data = resp.json()
+            content = data["choices"][0]["message"]["content"]
+            return clean_document_text(content)
+        print(f"⚠️图片识别全部模型失败，最后错误：{last_error}")
+        return ""
     except Exception as e:
         print(f"⚠️图片识别失败：{e}")
         return ""
