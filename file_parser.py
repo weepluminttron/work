@@ -21,6 +21,47 @@ def clean_document_text(raw_text: str) -> str:
 
 _ocr_engine = None
 _ocr_init_attempted = False
+_rapid_engine = None
+
+
+def _init_rapid_engine():
+    """初始化 RapidOCR（ONNX 推理，轻量且无 Paddle 3.3.0 兼容问题）"""
+    global _rapid_engine
+    if _rapid_engine is None:
+        from rapidocr_onnxruntime import RapidOCR
+        _rapid_engine = RapidOCR()
+        print("✅RapidOCR引擎初始化成功")
+    return _rapid_engine
+
+
+def _parse_rapid_result(result) -> list:
+    """兼容不同版本 RapidOCR 的返回格式，提取每行文字"""
+    lines = []
+    if not result:
+        return lines
+    if isinstance(result, dict):
+        for v in result.values():
+            if isinstance(v, dict):
+                t = v.get("rec_txt") or v.get("text")
+                if t:
+                    lines.append(str(t))
+            elif isinstance(v, (list, tuple)) and len(v) >= 2 and v[1]:
+                lines.append(str(v[1]))
+        return lines
+    if isinstance(result, (list, tuple)):
+        for item in result:
+            if isinstance(item, dict):
+                t = item.get("rec_txt") or item.get("text")
+                if t:
+                    lines.append(str(t))
+            elif item and len(item) >= 2 and item[1]:
+                lines.append(str(item[1]))
+        return lines
+    if hasattr(result, "txts"):
+        return [str(t) for t in result.txts if t]
+    if hasattr(result, "rec_texts"):
+        return [str(t) for t in result.rec_texts if t]
+    return lines
 
 
 def _init_ocr_engine():
@@ -205,22 +246,42 @@ def _ocr_image_bytes_local(file_bytes: bytes, mime: str = "image/png") -> str:
     try:
         import numpy as np
         from PIL import Image
-        if _init_ocr_engine() is None:
-            last_local_ocr_error = "本地OCR引擎初始化失败，请查看日志"
-            return ""
         img = Image.open(io.BytesIO(file_bytes))
         arr = np.array(img.convert("RGB"))
-        print("⏳本地OCR识别中（首次识别可能较慢）...")
+
+        # 优先使用轻量稳定的 RapidOCR（ONNX 推理，无 Paddle 3.3.0 兼容问题）
+        try:
+            engine = _init_rapid_engine()
+            print("⏳RapidOCR识别中（首次识别可能较慢）...")
+            out = engine(arr)
+            result = out[0] if isinstance(out, tuple) else out
+            lines = _parse_rapid_result(result)
+            if lines:
+                text = clean_document_text("\n".join(lines))
+                print(f"✅RapidOCR识别完成：{len(lines)} 行文字")
+                return text
+            last_local_ocr_error = "RapidOCR未识别出文字，尝试PaddleOCR"
+        except ImportError:
+            print("⚠️RapidOCR未安装，改用PaddleOCR（可执行 pip install rapidocr-onnxruntime 安装轻量版）")
+        except Exception as e:
+            last_local_ocr_error = f"RapidOCR识别失败：{e}"
+            print(f"⚠️RapidOCR识别失败：{e}，尝试PaddleOCR")
+
+        # 兜底：PaddleOCR
+        if _init_ocr_engine() is None:
+            last_local_ocr_error = "本地OCR引擎均不可用（RapidOCR 与 PaddleOCR 都失败）"
+            return ""
+        print("⏳PaddleOCR识别中（首次识别可能较慢）...")
         lines = _ocr_call(arr)
         if not lines:
             last_local_ocr_error = "本地OCR未识别出文字，图片可能不够清晰或为纯照片"
             return ""
         text = clean_document_text("\n".join(lines))
-        print(f"✅本地OCR识别完成：{len(lines)} 行文字")
+        print(f"✅PaddleOCR识别完成：{len(lines)} 行文字")
         return text
     except ImportError:
-        last_local_ocr_error = "服务器未安装本地OCR（可执行 pip install paddleocr paddlepaddle）"
-        print("⚠️本地OCR未安装：如需免费离线识别，请执行 pip install paddleocr paddlepaddle")
+        last_local_ocr_error = "服务器未安装本地OCR（可执行 pip install rapidocr-onnxruntime）"
+        print("⚠️本地OCR未安装：如需免费离线识别，请执行 pip install rapidocr-onnxruntime")
         return ""
     except Exception as e:
         last_local_ocr_error = f"本地OCR识别失败：{e}"
