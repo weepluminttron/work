@@ -119,6 +119,27 @@ def _get_archive(aid):
     return get_archive_by_id(aid)
 
 
+def _list_subjects():
+    """归档科目列表（去重）"""
+    from archive_db import get_all_archive_items
+    items = get_all_archive_items()
+    seen = set()
+    subjects = []
+    for it in items:
+        s = (it.get("subject") or "").strip()
+        if s and s not in seen:
+            seen.add(s)
+            subjects.append(s)
+    return subjects
+
+
+def _list_docs(subject: str):
+    """某科目下的归档文档列表 [(id, filename), ...]"""
+    from archive_db import query_by_subject
+    rows = query_by_subject(subject)
+    return [(r["id"], r["filename"]) for r in rows]
+
+
 def handle_web_command(text: str) -> str:
     """处理网页版指令/自由提问，返回回复文本"""
     if not text.startswith("/"):
@@ -281,6 +302,57 @@ def chat():
         traceback.print_exc()
         print(f"📱网页版处理异常：{e}")
         return jsonify({"ok": False, "error": f"处理失败：{e}"})
+
+
+@app.route("/api/options", methods=["POST"])
+@login_required
+def options():
+    """多级选项：科目 → 文档 → （天数）→ 执行"""
+    data = request.get_json(silent=True) or {}
+    step = data.get("step") or "subject"
+    next_cmd = data.get("next", "")
+    subject = data.get("subject", "")
+    aid = data.get("aid")
+
+    if step == "subject":
+        subjects = _list_subjects()
+        if not subjects:
+            return jsonify({"ok": True, "prompt": "📂 暂无归档文档，请先点 📎 上传文件", "options": []})
+        options_list = [
+            {"label": s, "payload": {"step": "docs", "next": next_cmd, "subject": s}}
+            for s in subjects
+        ]
+        print(f"📱网页版选项：选择科目（下一步 {next_cmd}）")
+        return jsonify({"ok": True, "prompt": "① 选择科目：", "options": options_list})
+
+    if step == "docs":
+        docs = _list_docs(subject)
+        options_list = []
+        for did, fname in docs:
+            if next_cmd in ("plan", "daily", "done"):
+                payload = {"step": "days", "next": next_cmd, "subject": subject, "aid": did}
+            else:
+                payload = {"step": "run", "cmd": f"/{next_cmd} id {did}"}
+            options_list.append({"label": f"ID{did} {fname}", "payload": payload})
+        print(f"📱网页版选项：选择文档（{subject}，共{len(docs)}个）")
+        return jsonify({"ok": True, "prompt": f"② 选择文档（{subject}）：", "options": options_list})
+
+    if step == "days":
+        days = data.get("days")
+        if days is None:
+            options_list = [
+                {"label": f"{d} 天", "payload": {"step": "days", "next": next_cmd, "subject": subject, "aid": aid, "days": d}}
+                for d in (3, 5, 7, 10, 14)
+            ]
+            return jsonify({"ok": True, "prompt": "③ 选择学习天数：", "options": options_list})
+        if next_cmd == "done":
+            cmd = f"/done id {aid} day {days}"
+        else:
+            cmd = f"/{next_cmd} id {aid} days {days}"
+        print(f"📱网页版选项完成，执行：{cmd}")
+        return jsonify({"ok": True, "prompt": "", "options": [], "run": cmd})
+
+    return jsonify({"ok": False, "error": "无效操作"})
 
 
 @app.route("/api/upload", methods=["POST"])

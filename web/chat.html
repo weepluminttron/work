@@ -19,6 +19,8 @@
   .bubble.typing { color: #999; }
   .chips { display: flex; gap: 8px; padding: 8px 12px; overflow-x: auto; background: #fff; border-top: 1px solid #eef1f7; }
   .chip { flex-shrink: 0; padding: 7px 13px; border-radius: 18px; background: #eef3ff; color: #4a7dff; font-size: 13px; cursor: pointer; border: none; }
+  .option-box { display: flex; flex-wrap: wrap; gap: 8px; background: #fff; border: 1px solid #e5e9f2; border-radius: 16px; padding: 10px; max-width: 82%; }
+  .opt-btn { padding: 8px 14px; border-radius: 16px; background: #eef3ff; color: #4a7dff; font-size: 14px; border: none; cursor: pointer; }
   footer { display: flex; gap: 8px; padding: 10px 12px; background: #fff; border-top: 1px solid #eef1f7; }
   #input { flex: 1; border: 1px solid #dfe4ef; border-radius: 20px; padding: 10px 14px; font-size: 15px; outline: none; }
   #send { background: #4a7dff; color: #fff; border: none; border-radius: 20px; padding: 10px 18px; font-size: 15px; cursor: pointer; }
@@ -49,12 +51,12 @@
     <button class="chip" data-cmd="/help">📋 指令</button>
     <button class="chip" data-cmd="/list">🗂 归档清单</button>
     <button class="chip" data-cmd="/today">📌 今日任务</button>
-    <button class="chip" data-cmd="/cards" data-need-id>📇 背诵卡片</button>
-    <button class="chip" data-cmd="/test" data-need-id>📝 自测题</button>
-    <button class="chip" data-cmd="/plan" data-need-id data-need-days>📅 学习计划</button>
-    <button class="chip" data-cmd="/daily" data-need-id data-need-days>📆 每日任务</button>
-    <button class="chip" data-cmd="/progress" data-need-id>📊 学习进度</button>
-    <button class="chip" data-cmd="/done" data-need-id data-need-day>✅ 打卡</button>
+    <button class="chip" data-next="cards">📇 背诵卡片</button>
+    <button class="chip" data-next="test">📝 自测题</button>
+    <button class="chip" data-next="plan">📅 学习计划</button>
+    <button class="chip" data-next="daily">📆 每日任务</button>
+    <button class="chip" data-next="progress">📊 学习进度</button>
+    <button class="chip" data-next="done">✅ 打卡</button>
     <button class="chip" data-cmd="/polish" data-need-text>✍️ 文本润色</button>
     <button class="chip" data-cmd="/rebuild">🔄 重建知识库</button>
   </div>
@@ -94,11 +96,7 @@ function addTyping(){
   return div;
 }
 
-async function send(){
-  const input = $('#input');
-  const text = input.value.trim();
-  if (!text) return;
-  input.value = '';
+async function runChat(text){
   addMsg(text, 'user');
   const typing = addTyping();
   try {
@@ -115,6 +113,57 @@ async function send(){
     typing.remove();
     addMsg('❌ 网络错误：' + e.message, 'bot');
   }
+}
+
+function send(){
+  const input = $('#input');
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = '';
+  runChat(text);
+}
+
+async function fetchOptions(body){
+  const typing = addTyping();
+  try {
+    const r = await fetch('/api/options', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body)
+    });
+    const d = await r.json();
+    typing.remove();
+    if (r.status === 401) { showLogin(); return; }
+    if (!d.ok) { addMsg('❌ ' + (d.error || '出错了'), 'bot'); return; }
+    if (d.prompt) addMsg(d.prompt, 'bot');
+    renderOptions(d.options);
+    if (d.run) runChat(d.run);
+  } catch (e) {
+    typing.remove();
+    addMsg('❌ 网络错误：' + e.message, 'bot');
+  }
+}
+
+function renderOptions(options){
+  if (!options || !options.length) return;
+  const div = document.createElement('div');
+  div.className = 'msg bot';
+  const box = document.createElement('div');
+  box.className = 'option-box';
+  options.forEach(o => {
+    const b = document.createElement('button');
+    b.className = 'opt-btn';
+    b.textContent = o.label;
+    b.addEventListener('click', () => fetchOptions(o.payload));
+    box.appendChild(b);
+  });
+  div.appendChild(box);
+  $('#messages').appendChild(div);
+  $('#messages').scrollTop = $('#messages').scrollHeight;
+}
+
+function startOptions(next){
+  fetchOptions({next: next});
 }
 
 async function upload(){
@@ -162,23 +211,8 @@ $('#attach').addEventListener('click', () => $('#fileInput').click());
 $('#fileInput').addEventListener('change', upload);
 $('#logout').addEventListener('click', async () => { await fetch('/api/logout', {method: 'POST'}); showLogin(); });
 document.querySelectorAll('.chip').forEach(c => c.addEventListener('click', () => {
+  if (c.dataset.next) { startOptions(c.dataset.next); return; }
   let cmd = c.dataset.cmd;
-  if (c.dataset.needId) {
-    const id = prompt('请输入归档ID：');
-    if (!id) return;
-    cmd += ' id ' + id;
-  }
-  if (c.dataset.needDay) {
-    const day = prompt('打卡第几天？');
-    if (!day) return;
-    cmd += ' day ' + day;
-  }
-  if (c.dataset.needDays) {
-    const d = prompt('学习天数（2-14，默认5）：', '5');
-    if (d === null) return;
-    const n = parseInt(d, 10);
-    cmd += ' days ' + (isNaN(n) ? 5 : n);
-  }
   if (c.dataset.needText) {
     const t = prompt('输入要润色的文本（可带语言，如：德语 内容）：');
     if (t === null) return;
