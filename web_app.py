@@ -293,7 +293,7 @@ def handle_web_command(text: str) -> str:
         return (f"✅合并完成！\n"
                 f"科目：{result['subject']}\n"
                 f"合并了 {result['count']} 份文档 → 新归档ID：{result['new_id']}\n"
-                f"原记录 {result['old_ids']} 已删除（磁盘上的原文件保留）\n\n"
+                f"原记录 {result['old_ids']} 与原文件已清理\n\n"
                 f"继续学习：/cards id {result['new_id']}、/test id {result['new_id']}")
 
     if cmd == "/rebuild":
@@ -354,11 +354,13 @@ def options():
         docs = _list_docs(subject)
         options_list = []
         for did, fname in docs:
+            # 合并记录只显示合并内容名字，不显示原始文档列表
+            label = fname if fname.startswith("【合并】") else f"ID{did} {fname}"
             if next_cmd in ("plan", "daily", "done"):
                 payload = {"step": "days", "next": next_cmd, "subject": subject, "aid": did}
             else:
                 payload = {"step": "run", "cmd": f"/{next_cmd} id {did}"}
-            options_list.append({"label": f"ID{did} {fname}", "payload": payload})
+            options_list.append({"label": label, "payload": payload})
         print(f"📱网页版选项：选择文档（{subject}，共{len(docs)}个）")
         return jsonify({"ok": True, "prompt": f"② 选择文档（{subject}）：", "options": options_list})
 

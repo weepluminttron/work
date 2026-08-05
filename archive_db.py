@@ -105,7 +105,7 @@ def delete_archive_record_by_id(archive_id: int) -> bool:
     return affected > 0
 
 def merge_subject_archives(subject: str) -> dict:
-    """把同科目的所有归档合并为一条记录（保留磁盘原文件，删除原记录）"""
+    """把同科目的所有归档合并为一条记录，并彻底清理原记录与原文件"""
     docs = query_by_subject(subject)
     if not docs:
         return {"ok": False, "error": f"没有找到科目「{subject}」的归档文档"}
@@ -121,8 +121,14 @@ def merge_subject_archives(subject: str) -> dict:
         merged_text
     )
     old_ids = [d["id"] for d in docs]
-    for oid in old_ids:
-        delete_archive_record_by_id(oid)
+    for d in docs:
+        sp = d.get("save_path") or ""
+        if sp and os.path.exists(sp):
+            try:
+                os.remove(sp)
+            except Exception as e:
+                print(f"⚠️合并时删除原文件失败 {sp}: {e}")
+        delete_archive_record_by_id(d["id"])
     return {"ok": True, "new_id": new_id, "old_ids": old_ids, "count": len(docs), "subject": subject}
 
 def get_archive_by_id(archive_id: int) -> Optional[Dict]:
