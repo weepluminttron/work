@@ -60,9 +60,13 @@ def generate_test_questions(text: str, subject: str, num: int = 10) -> tuple[str
     # 健壮分割逻辑
     if "===QUESTION===" in full_output and "===ANSWER===" in full_output:
         seg_q = full_output.split("===QUESTION===")[-1]
-        q_part, a_part = seg_q.split("===ANSWER===")
+        # 用 maxsplit=1 只按第一个标记分割，防止答案内容里再次出现标记导致解包失败
+        q_part, a_part = seg_q.split("===ANSWER===", 1)
         question_part = q_part.strip()
         answer_part = a_part.strip()
+        if not question_part or not answer_part:
+            question_part = full_output
+            answer_part = "⚠️AI输出未遵循分割标记，无法自动分离答案"
     else:
         question_part = full_output
         answer_part = "⚠️AI输出未遵循分割标记，无法自动分离答案"
