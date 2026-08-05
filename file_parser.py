@@ -4,6 +4,7 @@ import io
 import os
 import re
 import gc
+import base64
 import tempfile
 import subprocess
 
@@ -127,6 +128,38 @@ def extract_old_doc_bytes_text(file_bytes: bytes) -> str:
         return ""
 
 
+def extract_image_text(file_bytes: bytes, mime: str = "image/png") -> str:
+    """调用云端视觉模型识别图片中的文字内容（硅基流动 Qwen-VL）"""
+    try:
+        import config
+        import requests as _requests
+        b64 = base64.b64encode(file_bytes).decode("utf-8")
+        url = f"{config.EMB_BASE_URL}/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {config.EMB_API_KEY}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "model": "Qwen/Qwen2.5-VL-7B-Instruct",
+            "messages": [{
+                "role": "user",
+                "content": [
+                    {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}},
+                    {"type": "text", "text": "请完整识别并输出图片中的文字内容；如果图片没有文字，请用一两句话概括图片内容。"}
+                ]
+            }],
+            "max_tokens": 2000
+        }
+        resp = _requests.post(url, headers=headers, json=payload, timeout=60)
+        resp.raise_for_status()
+        data = resp.json()
+        content = data["choices"][0]["message"]["content"]
+        return clean_document_text(content)
+    except Exception as e:
+        print(f"⚠️图片识别失败：{e}")
+        return ""
+
+
 def extract_file_text(filename: str, file_bytes: bytes):
     """按扩展名提取文本，返回 (是否支持, 文本)"""
     suffix = filename.lower()
@@ -138,4 +171,14 @@ def extract_file_text(filename: str, file_bytes: bytes):
         return True, extract_pptx_bytes_text(file_bytes)
     if suffix.endswith(".doc"):
         return True, extract_old_doc_bytes_text(file_bytes)
+    if suffix.endswith((".jpg", ".jpeg", ".png", ".bmp", ".webp")):
+        mime_map = {
+            ".jpg": "image/jpeg",
+            ".jpeg": "image/jpeg",
+            ".png": "image/png",
+            ".bmp": "image/bmp",
+            ".webp": "image/webp",
+        }
+        mime = mime_map.get(suffix, "image/png")
+        return True, extract_image_text(file_bytes, mime)
     return False, ""

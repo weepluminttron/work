@@ -81,7 +81,7 @@ def _run_upload_task(task_id: str, filename: str, file_bytes: bytes):
         from file_parser import extract_file_text
         supported, doc_text = extract_file_text(filename, file_bytes)
         if not supported:
-            _finish_task(task_id, "error", error="不支持的文件格式，请上传 PDF/DOC/DOCX/PPTX")
+            _finish_task(task_id, "error", error="不支持的文件格式，请上传 PDF/DOC/DOCX/PPTX 或图片（JPG/PNG 等）")
             return
         if len(doc_text.strip()) < 20:
             _finish_task(task_id, "error", error="文档文字过少，无法处理（扫描版需要安装 OCR）")
