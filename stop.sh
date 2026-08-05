@@ -18,6 +18,12 @@ stop_service() {
         if kill -0 "$pid" 2>/dev/null; then
             kill "$pid"
             echo "🛑 已停止 $name (PID $pid)"
+            # 等待进程真正退出，避免端口未释放导致立即重启失败
+            for _ in $(seq 1 40); do
+                kill -0 "$pid" 2>/dev/null || break
+                sleep 0.5
+            done
+            kill -9 "$pid" 2>/dev/null
         else
             echo "ℹ️  $name 未在运行"
         fi
@@ -25,6 +31,7 @@ stop_service() {
     else
         if pkill -f "$pattern" 2>/dev/null; then
             echo "🛑 已停止 $name"
+            sleep 2
         else
             echo "ℹ️  $name 未在运行"
         fi
