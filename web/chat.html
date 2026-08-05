@@ -16,6 +16,20 @@
   .bubble { max-width: 82%; padding: 10px 14px; border-radius: 16px; white-space: pre-wrap; word-break: break-word; line-height: 1.6; font-size: 15px; }
   .msg.user .bubble { background: #4a7dff; color: #fff; border-bottom-right-radius: 4px; }
   .msg.bot .bubble { background: #fff; color: #222; border: 1px solid #e5e9f2; border-bottom-left-radius: 4px; }
+  .msg.bot .bubble h1 { font-size: 17px; margin: 8px 0 4px; }
+  .msg.bot .bubble h2 { font-size: 16px; margin: 8px 0 4px; color: #4a7dff; }
+  .msg.bot .bubble h3 { font-size: 15px; margin: 8px 0 4px; }
+  .msg.bot .bubble h4 { font-size: 14px; margin: 6px 0 3px; }
+  .msg.bot .bubble p { margin: 4px 0; }
+  .msg.bot .bubble ul, .msg.bot .bubble ol { margin: 4px 0 4px 18px; padding: 0; }
+  .msg.bot .bubble li { margin: 2px 0; }
+  .msg.bot .bubble pre { background: #f4f6fb; border-radius: 8px; padding: 8px 10px; overflow-x: auto; font-size: 13px; margin: 6px 0; }
+  .msg.bot .bubble code { background: #eef1f7; border-radius: 4px; padding: 1px 5px; font-size: 13px; }
+  .msg.bot .bubble pre code { background: none; padding: 0; }
+  .msg.bot .bubble table { border-collapse: collapse; margin: 6px 0; width: 100%; font-size: 13px; }
+  .msg.bot .bubble th, .msg.bot .bubble td { border: 1px solid #dde3ee; padding: 4px 8px; text-align: left; }
+  .msg.bot .bubble th { background: #eef3ff; }
+  .msg.bot .bubble hr { border: none; border-top: 1px dashed #dde3ee; margin: 8px 0; }
   .bubble.typing { color: #999; }
   .chips { display: flex; gap: 8px; padding: 8px 12px; overflow-x: auto; background: #fff; border-top: 1px solid #eef1f7; }
   .chip { flex-shrink: 0; padding: 7px 13px; border-radius: 18px; background: #eef3ff; color: #4a7dff; font-size: 13px; cursor: pointer; border: none; }
@@ -75,12 +89,81 @@ const $ = s => document.querySelector(s);
 function showLogin(){ $('#login').classList.remove('hidden'); $('#app').classList.add('hidden'); }
 function showApp(){ $('#login').classList.add('hidden'); $('#app').classList.remove('hidden'); $('#input').focus(); }
 
+function escapeHtml(s){
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function inlineFormat(s){
+  return s
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/(^|[^*])\*([^*\n]+)\*(?!\*)/g, '$1<em>$2</em>');
+}
+
+function renderMarkdown(text){
+  const lines = escapeHtml(text).split('\n');
+  const out = [];
+  let i = 0;
+  while (i < lines.length){
+    const line = lines[i];
+    if (/^```/.test(line.trim())){
+      const code = [];
+      i++;
+      while (i < lines.length && !/^```/.test(lines[i].trim())){ code.push(lines[i]); i++; }
+      i++;
+      out.push('<pre><code>' + code.join('\n') + '</code></pre>');
+      continue;
+    }
+    const h = line.match(/^(#{1,4})\s+(.*)$/);
+    if (h){
+      const lv = h[1].length;
+      out.push('<h' + lv + '>' + inlineFormat(h[2]) + '</h' + lv + '>');
+      i++;
+      continue;
+    }
+    if (/^\s*(-{3,}|\*{3,})\s*$/.test(line)){ out.push('<hr>'); i++; continue; }
+    if (/^\s*\|.*\|\s*$/.test(line) && i + 1 < lines.length && /^\s*\|?[\s:|-]+\|?\s*$/.test(lines[i + 1])){
+      const rows = [];
+      while (i < lines.length && /^\s*\|.*\|\s*$/.test(lines[i])){ rows.push(lines[i].trim()); i++; }
+      const parseRow = r => r.replace(/^\|/, '').replace(/\|$/, '').split('|').map(c => inlineFormat(c.trim()));
+      const header = parseRow(rows[0]);
+      let t = '<table><thead><tr>' + header.map(x => '<th>' + x + '</th>').join('') + '</tr></thead><tbody>';
+      for (let r = 2; r < rows.length; r++){
+        t += '<tr>' + parseRow(rows[r]).map(x => '<td>' + x + '</td>').join('') + '</tr>';
+      }
+      out.push(t + '</tbody></table>');
+      continue;
+    }
+    if (/^\s*[-•]\s+/.test(line)){
+      const items = [];
+      while (i < lines.length && /^\s*[-•]\s+/.test(lines[i])){ items.push(inlineFormat(lines[i].replace(/^\s*[-•]\s+/, ''))); i++; }
+      out.push('<ul>' + items.map(x => '<li>' + x + '</li>').join('') + '</ul>');
+      continue;
+    }
+    if (/^\s*\d+\.\s+/.test(line)){
+      const items = [];
+      while (i < lines.length && /^\s*\d+\.\s+/.test(lines[i])){ items.push(inlineFormat(lines[i].replace(/^\s*\d+\.\s+/, ''))); i++; }
+      out.push('<ol>' + items.map(x => '<li>' + x + '</li>').join('') + '</ol>');
+      continue;
+    }
+    const para = [];
+    while (i < lines.length && lines[i].trim() !== '' && !/^```/.test(lines[i].trim()) && !/^#{1,4}\s/.test(lines[i]) && !/^\s*\|.*\|\s*$/.test(lines[i]) && !/^\s*[-•]\s+/.test(lines[i]) && !/^\s*\d+\.\s+/.test(lines[i])){
+      para.push(inlineFormat(lines[i].trim()));
+      i++;
+    }
+    if (para.length){ out.push('<p>' + para.join('<br>') + '</p>'); }
+    else { i++; }
+  }
+  return out.join('');
+}
+
 function addMsg(text, who){
   const div = document.createElement('div');
   div.className = 'msg ' + who;
   const b = document.createElement('div');
   b.className = 'bubble';
-  b.textContent = text;
+  if (who === 'bot'){ b.innerHTML = renderMarkdown(text); }
+  else { b.textContent = text; }
   div.appendChild(b);
   $('#messages').appendChild(div);
   $('#messages').scrollTop = $('#messages').scrollHeight;
