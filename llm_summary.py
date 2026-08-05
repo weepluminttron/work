@@ -92,6 +92,54 @@ def extract_task_list(task_text: str) -> list:
         task_arr.append(content.strip())
     return task_arr
 
+def format_msg(raw_text: str) -> str:
+    text = raw_text.replace("\\\\(", "$")
+    text = text.replace("\\\\)", "$")
+    text = text.replace("\\\\begin", "\\begin")
+    text = text.replace("\\\\end", "\\end")
+    text = text.replace("\\\\\\\\", "\\\\")
+    return text
+
+def generate_study_plan(doc_content: str, subject: str):
+    prompt = f"""
+你是学习规划助手。基于下面课程文档内容，生成一份结构化学习计划。
+要求：
+1. 划分学习阶段（预习→精读→习题→复盘）
+2. 合理分配每日任务，建议3~7天学习周期
+3. 标出重点、难点、自测方式
+4. 排版清晰，不要多余废话
+科目：{subject}
+文档内容：
+{doc_content[:6000]}
+"""
+    res = llm_request(prompt)
+    return format_msg(res)
+
+def split_plan_to_daily_tasks(full_plan: str, subject: str, days: int = 5):
+    prompt = f"""
+你是学习拆解助手。
+已有完整中长期学习规划，均衡拆分为【{days}天每日学习清单】
+要求：
+1. 每一天明确：学习内容、重点、自测任务、预估耗时
+2. 难度循序渐进，前面预习精读，后面刷题复盘
+3. 严格格式：
+## Day1
+任务内容：xxx
+重点：xxx
+自测：xxx
+
+## Day2
+任务内容：xxx
+重点：xxx
+自测：xxx
+科目：{subject}
+整体学习规划：
+{full_plan[:6000]}
+最后不要额外总结，只输出结构化内容。
+"""
+    resp = llm_request(prompt)
+    return format_msg(resp)
+
 def auto_extract_archive_info(pdf_text: str) -> dict:
     """AI识别文档科目和核心知识点（网页版/飞书版共用）"""
     import re
