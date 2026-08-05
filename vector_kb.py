@@ -63,7 +63,11 @@ def _ensure_collection_dimension():
     global collection
     try:
         sample = collection.get(limit=1, include=["embeddings"])
-        embeds = sample.get("embeddings") or []
+        embeds = sample.get("embeddings")
+        if embeds is None:
+            embeds = []
+        elif not isinstance(embeds, list):
+            embeds = list(embeds)
         if embeds and len(embeds[0]) != EMBEDDING_DIM:
             print(f"⚠️检测到旧向量维度 {len(embeds[0])}，本地模型为 {EMBEDDING_DIM}，自动删除旧向量库")
             try:
