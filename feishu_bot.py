@@ -309,6 +309,19 @@ def build_menu_card() -> dict:
         ]
     }
 
+def build_menu_button_card() -> dict:
+    """按钮处理完成后出现的“菜单”入口小卡片（点按钮才展开完整菜单）"""
+    return {
+        "config": {"wide_screen_mode": True},
+        "header": {"title": {"tag": "plain_text", "content": "✅ 已处理完成"}, "template": "green"},
+        "elements": [
+            {"tag": "div", "text": {"tag": "lark_md", "content": "需要继续操作的话，点击下方按钮打开完整菜单："}},
+            {"tag": "action", "actions": [
+                {"tag": "button", "text": {"tag": "plain_text", "content": "📚 学习助手菜单"}, "value": {"cmd": "menu"}}
+            ]}
+        ]
+    }
+
 def format_msg(raw_text: str) -> str:
     text = raw_text.replace("\\\\(", "$")
     text = text.replace("\\\\)", "$")
@@ -990,14 +1003,17 @@ def handle_card_action(open_id: str, cmd: str):
                 send_msg(open_id, "✅知识库重建完成！所有归档文档已载入向量库")
             except Exception as e:
                 send_msg(open_id, f"❌重建知识库失败：{str(e)}")
+        elif cmd == "menu":
+            send_interactive_card(open_id, build_menu_card())
+            return
         elif cmd == "tip":
             send_interactive_card(open_id, build_menu_card())
             return
         else:
             send_msg(open_id, f"未知操作：{cmd}")
             return
-        # 处理完成后再次发送菜单，方便继续点选
-        send_interactive_card(open_id, build_menu_card())
+        # 处理完成后发送“菜单入口”小卡片，点按钮再展开完整菜单
+        send_interactive_card(open_id, build_menu_button_card())
     except Exception as e:
         import traceback
         traceback.print_exc()
