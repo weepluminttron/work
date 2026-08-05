@@ -82,6 +82,47 @@ def extract_task_list(task_text: str) -> list:
         task_arr.append(content.strip())
     return task_arr
 
+def auto_extract_archive_info(pdf_text: str) -> dict:
+    """AI识别文档科目和核心知识点（网页版/飞书版共用）"""
+    import re
+    import json
+    short_text = pdf_text[:3000]
+    prompt = f"""
+你是专业课程资料归档助手，严格遵守下面所有规则，**只输出纯JSON字符串**，禁止输出任何前置说明、注释、markdown、思考过程、多余换行。
+{{"subject":"科目名称","keypoint":"文档核心知识点概括，20～45字"}}
+文档片段：
+{short_text}
+"""
+    resp = llm_request(prompt)
+    json_match = re.search(r"\{.*\}", resp, re.DOTALL)
+    if not json_match:
+        return {"subject": "未知科目", "keypoint": "未识别知识点"}
+    try:
+        data = json.loads(json_match.group())
+        subject = str(data.get("subject", "未知科目")).strip()
+        kp = str(data.get("keypoint", "未识别知识点")).strip()
+        return {"subject": subject, "keypoint": kp}
+    except Exception:
+        return {"subject": "未知科目", "keypoint": "未识别知识点"}
+
+def ai_simplify_filename(raw_name: str, subject: str) -> str:
+    """AI精简文件名（网页版/飞书版共用）"""
+    import re
+    prompt = f"""精简文件名，只输出名称，不要任何解释。
+原始名称：{raw_name}
+科目：{subject}
+去除.pdf、副本、扫描版、水印、多余括号，控制20字内。
+"""
+    try:
+        short_name = llm_request(prompt).strip().replace("\n", "")
+        if len(short_name) > 30:
+            raise Exception("过长")
+        return short_name
+    except Exception:
+        fallback = re.sub(r"[（(].*?[）)]", "", raw_name)
+        fallback = re.sub(r"\.(pdf|docx|doc|pptx)", "", fallback)
+        return fallback.strip()
+
 def polish_text(text: str, lang: str = "") -> str:
     """润色德语/英语文本：让文本流畅自然，并遵循用户附加的修改要求"""
     lang_map = {

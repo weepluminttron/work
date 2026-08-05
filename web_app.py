@@ -45,7 +45,8 @@ HELP_TEXT = """📚 网页版学习助手指令：
 /rebuild            重建知识库
 /help               显示本清单
 
-直接输入问题，会自动检索你的归档资料回答。"""
+直接输入问题，会自动检索你的归档资料回答。
+📎 点击输入框左侧的回形针按钮，可上传 PDF/DOC/DOCX/PPTX，自动归档并加入知识库。"""
 
 
 def login_required(f):
@@ -279,6 +280,46 @@ def chat():
         import traceback
         traceback.print_exc()
         print(f"📱网页版处理异常：{e}")
+        return jsonify({"ok": False, "error": f"处理失败：{e}"})
+
+
+@app.route("/api/upload", methods=["POST"])
+@login_required
+def upload():
+    f = request.files.get("file")
+    if not f or not f.filename:
+        return jsonify({"ok": False, "error": "没有收到文件"})
+    filename = f.filename
+    file_bytes = f.read()
+    if not file_bytes:
+        return jsonify({"ok": False, "error": "文件内容为空"})
+    print(f"📱网页版收到文件：{filename}（{len(file_bytes)} 字节）")
+    try:
+        from file_parser import extract_file_text
+        supported, doc_text = extract_file_text(filename, file_bytes)
+        if not supported:
+            return jsonify({"ok": False, "error": "不支持的文件格式，请上传 PDF/DOC/DOCX/PPTX"})
+        if len(doc_text.strip()) < 20:
+            return jsonify({"ok": False, "error": "文档文字过少，无法处理（扫描版需要安装 OCR）"})
+
+        from llm_summary import auto_extract_archive_info, ai_simplify_filename
+        from archive_db import archive_file
+        from vector_kb import add_archive_to_kb
+
+        auto_info = auto_extract_archive_info(doc_text)
+        subj = auto_info["subject"]
+        short_name = ai_simplify_filename(filename, subj)
+        save_path, new_aid = archive_file(subj, short_name, file_bytes, filename, doc_text)
+        add_archive_to_kb(new_aid)
+        print(f"📱网页版归档完成：ID={new_aid} 科目={subj} 文件名={short_name}")
+        return jsonify({
+            "ok": True,
+            "reply": f"✅归档成功！\n归档ID：{new_aid}\n科目：{subj}\n文件名：{short_name}\n\n继续学习：\n/cards id {new_aid} 生成背诵卡片\n/test id {new_aid} 生成自测题\n/plan id {new_aid} 生成学习计划"
+        })
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        print(f"📱网页版文件处理异常：{e}")
         return jsonify({"ok": False, "error": f"处理失败：{e}"})
 
 
