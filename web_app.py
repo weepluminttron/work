@@ -84,7 +84,13 @@ def _run_upload_task(task_id: str, filename: str, file_bytes: bytes):
             _finish_task(task_id, "error", error="不支持的文件格式，请上传 PDF/DOC/DOCX/PPTX 或图片（JPG/PNG 等）")
             return
         if len(doc_text.strip()) < 20:
-            _finish_task(task_id, "error", error="文档文字过少，无法处理（扫描版需要安装 OCR）")
+            suffix = filename.lower()
+            if suffix.endswith((".jpg", ".jpeg", ".png", ".bmp", ".webp")):
+                _finish_task(task_id, "error", error="图片识别未获得文字：请检查图片是否清晰，或确认硅基流动密钥有效且有余额（日志中有详细原因）")
+            elif suffix.endswith(".pdf"):
+                _finish_task(task_id, "error", error="PDF 文字过少：扫描版需要安装 OCR（pip install paddleocr paddlepaddle），普通 PDF 请确认内容完整")
+            else:
+                _finish_task(task_id, "error", error="文档文字过少，无法处理")
             return
 
         from llm_summary import auto_extract_archive_info, ai_simplify_filename
