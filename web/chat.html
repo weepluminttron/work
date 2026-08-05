@@ -47,10 +47,16 @@
   <main id="messages"></main>
   <div class="chips">
     <button class="chip" data-cmd="/help">📋 指令</button>
-    <button class="chip" data-cmd="/list">🗂 归档</button>
+    <button class="chip" data-cmd="/list">🗂 归档清单</button>
     <button class="chip" data-cmd="/today">📌 今日任务</button>
-    <button class="chip" data-cmd="/cards id 1">📇 背诵卡片</button>
-    <button class="chip" data-cmd="/polish 德语 请帮我润色这段文本">✍️ 润色</button>
+    <button class="chip" data-cmd="/cards" data-need-id>📇 背诵卡片</button>
+    <button class="chip" data-cmd="/test" data-need-id>📝 自测题</button>
+    <button class="chip" data-cmd="/plan" data-need-id data-need-days>📅 学习计划</button>
+    <button class="chip" data-cmd="/daily" data-need-id data-need-days>📆 每日任务</button>
+    <button class="chip" data-cmd="/progress" data-need-id>📊 学习进度</button>
+    <button class="chip" data-cmd="/done" data-need-id data-need-day>✅ 打卡</button>
+    <button class="chip" data-cmd="/polish" data-need-text>✍️ 文本润色</button>
+    <button class="chip" data-cmd="/rebuild">🔄 重建知识库</button>
   </div>
   <footer>
     <button id="attach" title="上传文件（PDF/DOC/DOCX/PPTX）">📎</button>
@@ -155,7 +161,32 @@ $('#input').addEventListener('keydown', e => { if (e.key === 'Enter') send(); })
 $('#attach').addEventListener('click', () => $('#fileInput').click());
 $('#fileInput').addEventListener('change', upload);
 $('#logout').addEventListener('click', async () => { await fetch('/api/logout', {method: 'POST'}); showLogin(); });
-document.querySelectorAll('.chip').forEach(c => c.addEventListener('click', () => { $('#input').value = c.dataset.cmd; send(); }));
+document.querySelectorAll('.chip').forEach(c => c.addEventListener('click', () => {
+  let cmd = c.dataset.cmd;
+  if (c.dataset.needId) {
+    const id = prompt('请输入归档ID：');
+    if (!id) return;
+    cmd += ' id ' + id;
+  }
+  if (c.dataset.needDay) {
+    const day = prompt('打卡第几天？');
+    if (!day) return;
+    cmd += ' day ' + day;
+  }
+  if (c.dataset.needDays) {
+    const d = prompt('学习天数（2-14，默认5）：', '5');
+    if (d === null) return;
+    const n = parseInt(d, 10);
+    cmd += ' days ' + (isNaN(n) ? 5 : n);
+  }
+  if (c.dataset.needText) {
+    const t = prompt('输入要润色的文本（可带语言，如：德语 内容）：');
+    if (t === null) return;
+    cmd += ' ' + t;
+  }
+  $('#input').value = cmd;
+  send();
+}));
 
 init();
 </script>
