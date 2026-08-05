@@ -128,8 +128,25 @@ def extract_old_doc_bytes_text(file_bytes: bytes) -> str:
         return ""
 
 
+last_image_error = ""
+
+
+def _friendly_api_error(status_code: int, resp_text: str) -> str:
+    """把视觉接口的错误转换成用户能看懂的中文提示"""
+    if status_code == 401:
+        return "硅基流动 API 密钥无效（401），请检查服务器 .env 中的 EMB_API_KEY"
+    if status_code == 402:
+        return "硅基流动账户余额不足（402），请到控制台充值后重试"
+    if status_code == 400:
+        body = resp_text[:200] if resp_text else ""
+        return f"视觉模型不可用（400）：{body}"
+    return f"视觉接口返回异常（{status_code}）：{resp_text[:200]}"
+
+
 def extract_image_text(file_bytes: bytes, mime: str = "image/png") -> str:
     """调用云端视觉模型识别图片中的文字内容（硅基流动 Qwen-VL）"""
+    global last_image_error
+    last_image_error = ""
     try:
         import config
         import requests as _requests
@@ -152,15 +169,21 @@ def extract_image_text(file_bytes: bytes, mime: str = "image/png") -> str:
             }
             resp = _requests.post(url, headers=headers, json=payload, timeout=60)
             if resp.status_code != 200:
-                last_error = f"{resp.status_code}: {resp.text[:400]}"
+                last_error = _friendly_api_error(resp.status_code, resp.text)
                 print(f"⚠️图片识别模型 {model} 失败：{last_error}")
                 continue
             data = resp.json()
             content = data["choices"][0]["message"]["content"]
+            if not content or not content.strip():
+                last_error = "模型调用成功但未返回文字内容，请换一张更清晰的图片"
+                print(f"⚠️图片识别模型 {model} 返回空内容")
+                continue
             return clean_document_text(content)
+        last_image_error = last_error
         print(f"⚠️图片识别全部模型失败，最后错误：{last_error}")
         return ""
     except Exception as e:
+        last_image_error = str(e)
         print(f"⚠️图片识别失败：{e}")
         return ""
 

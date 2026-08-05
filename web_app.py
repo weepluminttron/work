@@ -78,15 +78,16 @@ def _run_task(task_id: str, text: str):
 def _run_upload_task(task_id: str, filename: str, file_bytes: bytes):
     """后台处理文件上传归档"""
     try:
-        from file_parser import extract_file_text
-        supported, doc_text = extract_file_text(filename, file_bytes)
+        import file_parser
+        supported, doc_text = file_parser.extract_file_text(filename, file_bytes)
         if not supported:
             _finish_task(task_id, "error", error="不支持的文件格式，请上传 PDF/DOC/DOCX/PPTX 或图片（JPG/PNG 等）")
             return
         if len(doc_text.strip()) < 20:
             suffix = filename.lower()
             if suffix.endswith((".jpg", ".jpeg", ".png", ".bmp", ".webp")):
-                _finish_task(task_id, "error", error="图片识别未获得文字：请检查图片是否清晰，或确认硅基流动密钥有效且有余额（日志中有详细原因）")
+                reason = file_parser.last_image_error or "模型未返回文字内容，请换一张更清晰的图片"
+                _finish_task(task_id, "error", error=f"图片识别未获得文字：{reason}")
             elif suffix.endswith(".pdf"):
                 _finish_task(task_id, "error", error="PDF 文字过少：扫描版需要安装 OCR（pip install paddleocr paddlepaddle），普通 PDF 请确认内容完整")
             else:
