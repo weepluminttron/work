@@ -3,6 +3,7 @@ from archive_db import get_all_archive_items, get_archive_by_id
 import config
 import re
 import requests
+import threading
 
 # ===================== 路径：向量库存放至云硬盘/data =====================
 CHROMA_PATH = "/data/chroma_study_kb"
@@ -10,12 +11,75 @@ COLLECTION_NAME = "study_docs"
 # 相似度阈值，低于该值不纳入上下文
 SIM_THRESHOLD = 0.65
 
+# ===================== 本地免费向量模型（无需硅基流动余额） =====================
+LOCAL_EMBEDDING_MODEL = "intfloat/multilingual-e5-small"
+EMBEDDING_DIM = 384
+_local_embedder = None
+_rebuilding = False
+_rebuild_lock = threading.Lock()
+
 # 初始化chroma
 chroma_client = chromadb.PersistentClient(path=CHROMA_PATH)
 collection = chroma_client.get_or_create_collection(
     name=COLLECTION_NAME,
     metadata={"hnsw:space": "cosine"}
 )
+
+
+def _get_local_embedder():
+    """加载本地多语言向量模型（首次使用需要下载模型文件）"""
+    global _local_embedder
+    if _local_embedder is None:
+        from fastembed import TextEmbedding
+        print("⏳加载本地向量模型（首次需要下载，约500MB）...")
+        _local_embedder = TextEmbedding(model_name=LOCAL_EMBEDDING_MODEL)
+        print("✅本地向量模型加载完成")
+    return _local_embedder
+
+
+def _ensure_collection_dimension():
+    """旧版向量库是硅基流动 bge-m3（1024维），本地模型是384维，维度不一致时自动重建空库"""
+    global collection
+    try:
+        sample = collection.get(limit=1, include=["embeddings"])
+        embeds = sample.get("embeddings") or []
+        if embeds and len(embeds[0]) != EMBEDDING_DIM:
+            print(f"⚠️检测到旧向量维度 {len(embeds[0])}，本地模型为 {EMBEDDING_DIM}，自动删除旧向量库")
+            try:
+                chroma_client.delete_collection(COLLECTION_NAME)
+            except Exception:
+                pass
+            collection = chroma_client.get_or_create_collection(
+                name=COLLECTION_NAME,
+                metadata={"hnsw:space": "cosine"}
+            )
+    except Exception as e:
+        print(f"⚠️检查向量库维度失败：{e}")
+
+
+def _ensure_ready():
+    """确保向量库与本地模型一致；为空且有归档时自动重建"""
+    global collection
+    _ensure_collection_dimension()
+    try:
+        if collection.count() > 0:
+            return
+    except Exception:
+        return
+    items = get_all_archive_items()
+    if not items:
+        return
+    global _rebuilding
+    with _rebuild_lock:
+        if _rebuilding:
+            return
+        _rebuilding = True
+        try:
+            print("🔄检测到知识库为空，正在用本地向量模型重建（首次可能较慢）...")
+            rebuild_kb()
+        finally:
+            _rebuilding = False
+
 
 # 【自研文本分割，完全替代RecursiveCharacterTextSplitter】
 def split_text_custom(text: str, chunk_size=600, chunk_overlap=100):
@@ -46,21 +110,21 @@ def clean_text(txt: str) -> str:
     txt = re.sub(r"\s+", " ", txt)
     return txt.strip()
 
-# 【调用硅基流动云端生成向量，替代本地HuggingFace模型】
+# 【调用本地多语言向量模型生成向量（免费，不依赖硅基流动余额）】
 def get_embedding(text_list: list[str]) -> list[list[float]]:
-    headers = {
-        "Authorization": f"Bearer {config.EMB_API_KEY}",
-        "Content-Type": "application/json"
-    }
-    payload = {
-        "model": config.EMBEDDING_MODEL,
-        "input": text_list
-    }
-    resp = requests.post(f"{config.EMB_BASE_URL}/embeddings", headers=headers, json=payload, timeout=30)
-    resp.raise_for_status()
-    data = resp.json()
-    embeddings = [item["embedding"] for item in data["data"]]
-    return embeddings
+    embedder = _get_local_embedder()
+    vecs = list(embedder.embed(text_list))
+    return [v.tolist() for v in vecs]
+
+
+def get_query_embedding(query: str) -> list[float]:
+    """生成单个查询向量（与文档向量同一模型）"""
+    embedder = _get_local_embedder()
+    if hasattr(embedder, "query_embed"):
+        vec = embedder.query_embed(query)
+        return vec.tolist()
+    vecs = list(embedder.embed([query]))
+    return vecs[0].tolist()
 
 # 重建整个知识库（初始化使用）
 def rebuild_kb():
@@ -102,7 +166,7 @@ def rebuild_kb():
             for _ in chunks
         ]
         embeds = get_embedding(chunks)
-        collection.add(
+        collection.upsert(
             embeddings=embeds,
             documents=chunks,
             metadatas=metadatas,
@@ -113,6 +177,7 @@ def rebuild_kb():
 
 # 新增单篇文档进入向量库（上传PDF归档时自动调用）
 def add_archive_to_kb(archive_id: int):
+    _ensure_ready()
     row = get_archive_by_id(archive_id)
     if not row:
         return
@@ -130,7 +195,7 @@ def add_archive_to_kb(archive_id: int):
         for _ in chunks
     ]
     embeds = get_embedding(chunks)
-    collection.add(embeddings=embeds, documents=chunks, metadatas=metadatas, ids=ids)
+    collection.upsert(embeddings=embeds, documents=chunks, metadatas=metadatas, ids=ids)
     print(f"📄归档ID {archive_id} 已加入向量知识库")
 
 # 删除指定归档对应的向量片段（配套delete_archive_file调用）
@@ -149,7 +214,8 @@ def remove_archive_from_kb(archive_id: int):
 # 查询知识库，返回【过滤后】相关片段 + 相似度
 def query_knowledge(query: str, top_k=4):
     try:
-        query_emb = get_embedding([query])
+        _ensure_ready()
+        query_emb = [get_query_embedding(query)]
         res = collection.query(
             query_embeddings=query_emb,
             n_results=top_k

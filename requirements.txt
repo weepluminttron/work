@@ -11,7 +11,13 @@ APScheduler>=3.10
 chromadb>=1.5
 PyYAML>=6.0.3
 
-# 可选：扫描版PDF OCR（体积大，按需安装）
+# 免费本地图片/扫描PDF OCR（推荐，轻量且无Paddle兼容问题）
+rapidocr-onnxruntime>=1.4
+
+# 免费本地向量模型（知识库检索，无需硅基流动余额）
+fastembed>=0.4
+
+# 可选：PaddleOCR 兜底（体积大，按需安装）
 # paddleocr>=2.7
 # paddlepaddle>=2.6
 
