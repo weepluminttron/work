@@ -7,6 +7,26 @@ from flask import Flask, request, jsonify, session, send_file
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 WEB_DIR = os.path.join(BASE_DIR, "web")
 
+
+def _load_local_env():
+    """读取 .env 文件（密钥/密码），已存在的环境变量优先"""
+    env_path = os.path.join(BASE_DIR, ".env")
+    if not os.path.exists(env_path):
+        return
+    with open(env_path, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, _, value = line.partition("=")
+            key = key.strip()
+            value = value.strip().strip('"').strip("'")
+            if key and key not in os.environ:
+                os.environ[key] = value
+
+
+_load_local_env()
+
 app = Flask(__name__)
 app.secret_key = os.getenv("WEB_SECRET_KEY", "study-assistant-web-secret")
 # 网页版登录密码：在服务器 .env 中设置 WEB_PASSWORD；不设置则无需登录（仅建议自用）
