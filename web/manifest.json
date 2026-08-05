@@ -1,0 +1,11 @@
+{
+  "name": "学习助手",
+  "short_name": "学习助手",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f5f7fb",
+  "theme_color": "#4a7dff",
+  "icons": [
+    {"src": "/icon.svg", "sizes": "any", "type": "image/svg+xml"}
+  ]
+}

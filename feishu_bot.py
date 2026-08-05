@@ -548,14 +548,7 @@ def split_plan_to_daily_tasks(full_plan: str, subject: str, days: int = 5):
     resp = llm_request(prompt)
     return format_msg(resp)
 
-def extract_task_list(task_text: str) -> list:
-    import re
-    pattern = r"## Day(\d+)\n任务内容：(.*?)(?=\n## Day|$)"
-    matches = re.findall(pattern, task_text, re.DOTALL)
-    task_arr = []
-    for _, content in matches:
-        task_arr.append(content.strip())
-    return task_arr
+from llm_summary import extract_task_list
 
 # =====================【消息主逻辑】=====================
 def process_message_task(event_data):

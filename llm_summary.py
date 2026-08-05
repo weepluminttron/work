@@ -72,6 +72,16 @@ def generate_test_questions(text: str, subject: str, num: int = 10) -> tuple[str
         answer_part = "⚠️AI输出未遵循分割标记，无法自动分离答案"
     return question_part, answer_part
 
+def extract_task_list(task_text: str) -> list:
+    """从每日任务文本中提取任务清单（供网页版/飞书版共用）"""
+    import re
+    pattern = r"## Day(\d+)\n任务内容：(.*?)(?=\n## Day|$)"
+    matches = re.findall(pattern, task_text, re.DOTALL)
+    task_arr = []
+    for _, content in matches:
+        task_arr.append(content.strip())
+    return task_arr
+
 def polish_text(text: str, lang: str = "") -> str:
     """润色德语/英语文本：让文本流畅自然，并遵循用户附加的修改要求"""
     lang_map = {

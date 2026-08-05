@@ -34,6 +34,7 @@ stop_service() {
 stop_service "飞书机器人" bot "gunicorn.*feishu_bot"
 stop_service "每日定时推送" scheduler "review_scheduler.py"
 stop_service "文件夹监听" watcher "folder_watcher.py"
+stop_service "网页版学习助手" web "web_app"
 
 echo ""
 echo "🎉 全部服务已关闭"

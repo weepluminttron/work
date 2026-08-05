@@ -41,6 +41,9 @@ start_service "每日定时推送" scheduler "python review_scheduler.py"
 # 3) 文件夹自动监听（不需要可以删掉这一段）
 start_service "文件夹监听" watcher "python folder_watcher.py"
 
+# 4) 网页版学习助手（手机/电脑浏览器访问，端口 8090）
+start_service "网页版学习助手" web "gunicorn --bind 0.0.0.0:8090 --workers 1 --threads 4 --timeout 300 web_app:app"
+
 echo ""
 echo "🎉 全部服务已在后台运行，日志目录: $LOG_DIR"
 echo "    查看日志: tail -f $LOG_DIR/bot.log"
