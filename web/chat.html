@@ -98,6 +98,10 @@ function addTyping(){
   return div;
 }
 
+async function safeJson(r){
+  try { return await r.json(); } catch (e) { return null; }
+}
+
 async function runChat(text){
   addMsg(text, 'user');
   const typing = addTyping();
@@ -107,8 +111,9 @@ async function runChat(text){
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({message: text})
     });
-    const d = await r.json();
+    const d = await safeJson(r);
     typing.remove();
+    if (!d) { addMsg('❌ 服务器响应异常（状态码 ' + r.status + '），可能处理超时，请稍后重试', 'bot'); return; }
     if (r.status === 401) { showLogin(); return; }
     addMsg(d.ok ? d.reply : '❌ ' + (d.error || '出错了'), 'bot');
     if (d.ok && d.options) renderOptions(d.options);
@@ -134,8 +139,9 @@ async function fetchOptions(body){
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify(body)
     });
-    const d = await r.json();
+    const d = await safeJson(r);
     typing.remove();
+    if (!d) { addMsg('❌ 服务器响应异常（状态码 ' + r.status + '），可能处理超时，请稍后重试', 'bot'); return; }
     if (r.status === 401) { showLogin(); return; }
     if (!d.ok) { addMsg('❌ ' + (d.error || '出错了'), 'bot'); return; }
     if (d.prompt) addMsg(d.prompt, 'bot');
@@ -185,8 +191,9 @@ async function upload(){
   fd.append('file', file);
   try {
     const r = await fetch('/api/upload', {method: 'POST', body: fd});
-    const d = await r.json();
+    const d = await safeJson(r);
     typing.remove();
+    if (!d) { addMsg('❌ 服务器响应异常（状态码 ' + r.status + '），可能处理超时，请稍后重试', 'bot'); return; }
     if (r.status === 401) { showLogin(); return; }
     addMsg(d.ok ? d.reply : '❌ ' + (d.error || '上传失败'), 'bot');
   } catch (e) {
