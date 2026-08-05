@@ -2,6 +2,9 @@
 """网页版学习助手：复用学习助手核心功能，提供手机/电脑可用的聊天界面（PWA）"""
 import os
 import functools
+import threading
+import uuid
+import time
 from flask import Flask, request, jsonify, session, send_file
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -34,6 +37,74 @@ WEB_PASSWORD = os.getenv("WEB_PASSWORD", "")
 
 # 自测题答案暂存：{归档ID: 答案文本}，点“查看答案”按钮时返回
 _web_answers = {}
+
+# 后台任务：{task_id: {"status": "running"/"done"/"error", "reply": ..., "options": ..., "error": ..., "ts": ...}}
+_task_results = {}
+_task_lock = threading.Lock()
+_TASK_TTL = 3600
+
+
+def _prune_tasks():
+    """清理过期任务结果"""
+    now = time.time()
+    with _task_lock:
+        expired = [tid for tid, t in _task_results.items() if now - t.get("ts", now) > _TASK_TTL]
+        for tid in expired:
+            _task_results.pop(tid, None)
+
+
+def _finish_task(task_id: str, status: str, **kwargs):
+    with _task_lock:
+        _task_results[task_id] = {"status": status, "ts": time.time(), **kwargs}
+
+
+def _run_task(task_id: str, text: str):
+    """后台执行聊天指令"""
+    try:
+        reply = handle_web_command(text)
+        if isinstance(reply, tuple):
+            reply_text, reply_options = reply
+        else:
+            reply_text, reply_options = reply, None
+        print(f"📱网页版回复完成（{len(reply_text)} 字）")
+        _finish_task(task_id, "done", reply=reply_text, options=reply_options)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        print(f"📱网页版处理异常：{e}")
+        _finish_task(task_id, "error", error=f"处理失败：{e}")
+
+
+def _run_upload_task(task_id: str, filename: str, file_bytes: bytes):
+    """后台处理文件上传归档"""
+    try:
+        from file_parser import extract_file_text
+        supported, doc_text = extract_file_text(filename, file_bytes)
+        if not supported:
+            _finish_task(task_id, "error", error="不支持的文件格式，请上传 PDF/DOC/DOCX/PPTX")
+            return
+        if len(doc_text.strip()) < 20:
+            _finish_task(task_id, "error", error="文档文字过少，无法处理（扫描版需要安装 OCR）")
+            return
+
+        from llm_summary import auto_extract_archive_info, ai_simplify_filename
+        from archive_db import archive_file
+        from vector_kb import add_archive_to_kb
+
+        auto_info = auto_extract_archive_info(doc_text)
+        subj = auto_info["subject"]
+        short_name = ai_simplify_filename(filename, subj)
+        save_path, new_aid = archive_file(subj, short_name, file_bytes, filename, doc_text)
+        add_archive_to_kb(new_aid)
+        print(f"📱网页版归档完成：ID={new_aid} 科目={subj} 文件名={short_name}")
+        reply = (f"✅归档成功！\n归档ID：{new_aid}\n科目：{subj}\n文件名：{short_name}\n\n"
+                 f"继续学习：\n/cards id {new_aid} 生成背诵卡片\n/test id {new_aid} 生成自测题\n/plan id {new_aid} 生成学习计划")
+        _finish_task(task_id, "done", reply=reply)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        print(f"📱网页版文件处理异常：{e}")
+        _finish_task(task_id, "error", error=f"处理失败：{e}")
 
 HELP_TEXT = """📚 网页版学习助手指令：
 /list               查看归档清单
@@ -353,19 +424,26 @@ def chat():
     print(f"📱网页版收到消息：{text[:200]}")
     if not text:
         return jsonify({"ok": False, "error": "消息为空"})
-    try:
-        reply = handle_web_command(text)
-        if isinstance(reply, tuple):
-            reply_text, reply_options = reply
-        else:
-            reply_text, reply_options = reply, None
-        print(f"📱网页版回复完成（{len(reply_text)} 字）")
-        return jsonify({"ok": True, "reply": reply_text, "options": reply_options})
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        print(f"📱网页版处理异常：{e}")
-        return jsonify({"ok": False, "error": f"处理失败：{e}"})
+    task_id = uuid.uuid4().hex[:12]
+    _finish_task(task_id, "running")
+    threading.Thread(target=_run_task, args=(task_id, text), daemon=True).start()
+    return jsonify({"ok": True, "task_id": task_id, "status": "running"})
+
+
+@app.route("/api/task", methods=["GET"])
+@login_required
+def task_status():
+    _prune_tasks()
+    task_id = request.args.get("task_id", "")
+    with _task_lock:
+        res = _task_results.get(task_id)
+    if not res:
+        return jsonify({"ok": False, "error": "任务不存在或已过期"})
+    if res["status"] == "running":
+        return jsonify({"ok": True, "status": "running"})
+    if res["status"] == "error":
+        return jsonify({"ok": False, "error": res.get("error", "处理失败")})
+    return jsonify({"ok": True, "status": "done", "reply": res.get("reply"), "options": res.get("options")})
 
 
 @app.route("/api/options", methods=["POST"])
@@ -438,33 +516,10 @@ def upload():
     if not file_bytes:
         return jsonify({"ok": False, "error": "文件内容为空"})
     print(f"📱网页版收到文件：{filename}（{len(file_bytes)} 字节）")
-    try:
-        from file_parser import extract_file_text
-        supported, doc_text = extract_file_text(filename, file_bytes)
-        if not supported:
-            return jsonify({"ok": False, "error": "不支持的文件格式，请上传 PDF/DOC/DOCX/PPTX"})
-        if len(doc_text.strip()) < 20:
-            return jsonify({"ok": False, "error": "文档文字过少，无法处理（扫描版需要安装 OCR）"})
-
-        from llm_summary import auto_extract_archive_info, ai_simplify_filename
-        from archive_db import archive_file
-        from vector_kb import add_archive_to_kb
-
-        auto_info = auto_extract_archive_info(doc_text)
-        subj = auto_info["subject"]
-        short_name = ai_simplify_filename(filename, subj)
-        save_path, new_aid = archive_file(subj, short_name, file_bytes, filename, doc_text)
-        add_archive_to_kb(new_aid)
-        print(f"📱网页版归档完成：ID={new_aid} 科目={subj} 文件名={short_name}")
-        return jsonify({
-            "ok": True,
-            "reply": f"✅归档成功！\n归档ID：{new_aid}\n科目：{subj}\n文件名：{short_name}\n\n继续学习：\n/cards id {new_aid} 生成背诵卡片\n/test id {new_aid} 生成自测题\n/plan id {new_aid} 生成学习计划"
-        })
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        print(f"📱网页版文件处理异常：{e}")
-        return jsonify({"ok": False, "error": f"处理失败：{e}"})
+    task_id = uuid.uuid4().hex[:12]
+    _finish_task(task_id, "running")
+    threading.Thread(target=_run_upload_task, args=(task_id, filename, file_bytes), daemon=True).start()
+    return jsonify({"ok": True, "task_id": task_id, "status": "running"})
 
 
 if __name__ == "__main__":

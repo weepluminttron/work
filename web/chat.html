@@ -102,6 +102,29 @@ async function safeJson(r){
   try { return await r.json(); } catch (e) { return null; }
 }
 
+async function pollTask(taskId){
+  const typing = addTyping();
+  let tries = 0;
+  try {
+    while (tries < 600) {
+      tries += 1;
+      const r = await fetch('/api/task?task_id=' + encodeURIComponent(taskId));
+      const d = await safeJson(r);
+      if (r.status === 401) { typing.remove(); showLogin(); return null; }
+      if (d && d.status === 'done') { typing.remove(); return d; }
+      if (d && !d.ok) { typing.remove(); addMsg('❌ ' + (d.error || '任务失败'), 'bot'); return null; }
+      await new Promise(res => setTimeout(res, 1500));
+    }
+    typing.remove();
+    addMsg('❌ 任务处理超时（超过15分钟），请重试', 'bot');
+    return null;
+  } catch (e) {
+    typing.remove();
+    addMsg('❌ 网络错误：' + e.message, 'bot');
+    return null;
+  }
+}
+
 async function runChat(text){
   addMsg(text, 'user');
   const typing = addTyping();
@@ -115,8 +138,11 @@ async function runChat(text){
     typing.remove();
     if (!d) { addMsg('❌ 服务器响应异常（状态码 ' + r.status + '），可能处理超时，请稍后重试', 'bot'); return; }
     if (r.status === 401) { showLogin(); return; }
-    addMsg(d.ok ? d.reply : '❌ ' + (d.error || '出错了'), 'bot');
-    if (d.ok && d.options) renderOptions(d.options);
+    if (!d.ok || !d.task_id) { addMsg('❌ ' + (d.error || '发送失败'), 'bot'); return; }
+    const result = await pollTask(d.task_id);
+    if (!result) return;
+    addMsg(result.reply, 'bot');
+    if (result.options) renderOptions(result.options);
   } catch (e) {
     typing.remove();
     addMsg('❌ 网络错误：' + e.message, 'bot');
@@ -186,18 +212,17 @@ async function upload(){
   const file = input.files[0];
   if (!file) return;
   addMsg('📎 ' + file.name, 'user');
-  const typing = addTyping();
   const fd = new FormData();
   fd.append('file', file);
   try {
     const r = await fetch('/api/upload', {method: 'POST', body: fd});
     const d = await safeJson(r);
-    typing.remove();
     if (!d) { addMsg('❌ 服务器响应异常（状态码 ' + r.status + '），可能处理超时，请稍后重试', 'bot'); return; }
     if (r.status === 401) { showLogin(); return; }
-    addMsg(d.ok ? d.reply : '❌ ' + (d.error || '上传失败'), 'bot');
+    if (!d.ok || !d.task_id) { addMsg('❌ ' + (d.error || '上传失败'), 'bot'); return; }
+    const result = await pollTask(d.task_id);
+    if (result) addMsg(result.reply, 'bot');
   } catch (e) {
-    typing.remove();
     addMsg('❌ 网络错误：' + e.message, 'bot');
   }
   input.value = '';
