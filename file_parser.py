@@ -20,26 +20,79 @@ def clean_document_text(raw_text: str) -> str:
 
 
 _ocr_engine = None
+_ocr_init_attempted = False
+
+
+def _init_ocr_engine():
+    """初始化本地 PaddleOCR 引擎，自动兼容不同版本（2.x/3.x 参数不同）"""
+    global _ocr_engine, _ocr_init_attempted
+    if _ocr_engine is not None:
+        return _ocr_engine
+    if _ocr_init_attempted:
+        return None
+    _ocr_init_attempted = True
+    from paddleocr import PaddleOCR
+    param_sets = [
+        {"lang": "ch", "use_gpu": False},
+        {"lang": "ch", "use_gpu": False, "use_angle_cls": True},
+        {
+            "lang": "ch", "use_gpu": False, "use_angle_cls": True,
+            "use_doc_orientation_classify": False, "use_doc_unwarping": False,
+            "enable_memory_optim": True, "rec_batch_num": 1,
+        },
+        {"lang": "ch"},
+    ]
+    last_err = None
+    for kw in param_sets:
+        try:
+            _ocr_engine = PaddleOCR(**kw)
+            print("✅本地OCR引擎初始化成功")
+            return _ocr_engine
+        except Exception as e:
+            last_err = e
+            continue
+    print(f"⚠️本地OCR引擎初始化失败：{last_err}")
+    return None
+
+
+def _ocr_call(img) -> list:
+    """兼容 PaddleOCR 2.x ocr() 与 3.x predict()，返回识别出的每行文字"""
+    if _ocr_engine is None:
+        return []
+    res = None
+    try:
+        res = _ocr_engine.ocr(img, cls=True)
+    except Exception:
+        try:
+            res = _ocr_engine.predict(img)
+        except Exception:
+            return []
+    lines = []
+    if not res:
+        return lines
+    for item in res:
+        if isinstance(item, dict):
+            rec_texts = item.get("rec_texts") or []
+            for t in rec_texts:
+                if t:
+                    lines.append(str(t))
+        elif hasattr(item, "rec_texts"):
+            for t in item.rec_texts or []:
+                if t:
+                    lines.append(str(t))
+        else:
+            for line_info in item or []:
+                if line_info and len(line_info) >= 2 and line_info[1] and line_info[1][0]:
+                    lines.append(str(line_info[1][0]))
+    return lines
 
 
 def ocr_pdf_stream(pdf_bytes: bytes) -> str:
     """扫描版 PDF OCR（可选，未安装 paddleocr 时返回空）"""
-    global _ocr_engine
     import fitz
     try:
-        from paddleocr import PaddleOCR
-        if _ocr_engine is None:
-            print("⚠️初始化OCR引擎")
-            _ocr_engine = PaddleOCR(
-                use_angle_cls=True,
-                lang="ch",
-                use_gpu=False,
-                use_doc_orientation_classify=False,
-                use_doc_unwarping=False,
-                use_textline_orientation=False,
-                enable_memory_optim=True,
-                rec_batch_num=1
-            )
+        if _init_ocr_engine() is None:
+            return ""
     except Exception as e:
         print(f"OCR加载失败：{e}")
         return ""
@@ -51,11 +104,7 @@ def ocr_pdf_stream(pdf_bytes: bytes) -> str:
             pix = page.get_pixmap(dpi=200)
             img_data = pix.tobytes("png")
             pix = None
-            res = _ocr_engine.ocr(img_data, cls=True)
-            lines = []
-            if res and res[0]:
-                for line_info in res[0]:
-                    lines.append(line_info[1][0])
+            lines = _ocr_call(img_data)
             ocr_result.append("\n".join(lines))
         return clean_document_text("\n\n".join(ocr_result))
     finally:
@@ -145,31 +194,14 @@ def _friendly_api_error(status_code: int, resp_text: str) -> str:
 
 def _ocr_image_bytes_local(file_bytes: bytes, mime: str = "image/png") -> str:
     """使用本地 PaddleOCR 识别图片文字（免费，不需要 API 余额）"""
-    global _ocr_engine
     try:
         import numpy as np
         from PIL import Image
-        from paddleocr import PaddleOCR
-        if _ocr_engine is None:
-            print("⏳初始化本地OCR引擎（首次使用较慢）")
-            _ocr_engine = PaddleOCR(
-                use_angle_cls=True,
-                lang="ch",
-                use_gpu=False,
-                use_doc_orientation_classify=False,
-                use_doc_unwarping=False,
-                use_textline_orientation=False,
-                enable_memory_optim=True,
-                rec_batch_num=1
-            )
+        if _init_ocr_engine() is None:
+            return ""
         img = Image.open(io.BytesIO(file_bytes))
         arr = np.array(img.convert("RGB"))
-        res = _ocr_engine.ocr(arr, cls=True)
-        lines = []
-        if res and res[0]:
-            for line_info in res[0]:
-                if line_info and len(line_info) >= 2 and line_info[1]:
-                    lines.append(line_info[1][0])
+        lines = _ocr_call(arr)
         return clean_document_text("\n".join(lines))
     except ImportError:
         print("⚠️本地OCR未安装：如需免费离线识别，请执行 pip install paddleocr paddlepaddle")
