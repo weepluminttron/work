@@ -37,14 +37,21 @@ def generate_knowledge_points(text: str, subject: str) -> str:
 """
     return llm_request(prompt)
 
-def generate_test_questions(text: str, subject: str, num: int = 10) -> tuple[str, str]:
+def generate_test_questions(text: str, subject: str, num: int = 10, with_answers: bool = True) -> tuple[str, str]:
+    if with_answers:
+        answer_section = """
+第二部分：标准答案+简要解析
+分割标记：===ANSWER===
+"""
+    else:
+        answer_section = "本次只生成题目，不要输出任何答案或解析。"
+
     prompt = f"""
 任务：基于下方{subject}学习资料生成{num}道自测习题，混合选择题+简答题。
 ⚠️严格输出规范，禁止额外开场白、总结！
 第一部分：全部试题
 分割标记：===QUESTION===
-第二部分：标准答案+简要解析
-分割标记：===ANSWER===
+{answer_section}
 
 格式要求：
 1. 数学公式使用 $表达式$，禁止多层反斜杠
@@ -58,6 +65,9 @@ def generate_test_questions(text: str, subject: str, num: int = 10) -> tuple[str
     full_output = llm_request(prompt)
 
     # 健壮分割逻辑
+    if not with_answers:
+        return full_output.strip(), ""
+
     if "===QUESTION===" in full_output and "===ANSWER===" in full_output:
         seg_q = full_output.split("===QUESTION===")[-1]
         # 用 maxsplit=1 只按第一个标记分割，防止答案内容里再次出现标记导致解包失败

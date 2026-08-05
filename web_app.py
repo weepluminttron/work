@@ -32,6 +32,9 @@ app.secret_key = os.getenv("WEB_SECRET_KEY", "study-assistant-web-secret")
 # 网页版登录密码：在服务器 .env 中设置 WEB_PASSWORD；不设置则无需登录（仅建议自用）
 WEB_PASSWORD = os.getenv("WEB_PASSWORD", "")
 
+# 自测题答案暂存：{归档ID: 答案文本}，点“查看答案”按钮时返回
+_web_answers = {}
+
 HELP_TEXT = """📚 网页版学习助手指令：
 /list               查看归档清单
 /today              查看今日待办任务
@@ -181,8 +184,19 @@ def handle_web_command(text: str) -> str:
         if not row:
             return f"❌未找到归档ID {aid}"
         from llm_summary import generate_test_questions
-        q, a = generate_test_questions(row["file_text"], row["subject"], 10)
-        return f"{q}\n\n📝【参考答案】\n{a}"
+        q, a = generate_test_questions(row["file_text"], row["subject"], 20)
+        _web_answers[aid] = a
+        print(f"📱网页版已生成20道题并暂存答案：归档ID {aid}")
+        return q, [{"label": "📖 查看答案", "payload": {"step": "run", "cmd": f"/answer id {aid}"}}]
+
+    if cmd == "/answer":
+        aid = _parse_aid(parts)
+        if aid is None:
+            return "用法：/answer id 归档ID"
+        ans = _web_answers.get(aid)
+        if not ans:
+            return "暂无该归档的答案，请先通过「自测题」生成题目"
+        return f"📖【参考答案】\n{ans}"
 
     if cmd == "/plan":
         aid = _parse_aid(parts)
@@ -314,8 +328,12 @@ def chat():
         return jsonify({"ok": False, "error": "消息为空"})
     try:
         reply = handle_web_command(text)
-        print(f"📱网页版回复完成（{len(reply)} 字）")
-        return jsonify({"ok": True, "reply": reply})
+        if isinstance(reply, tuple):
+            reply_text, reply_options = reply
+        else:
+            reply_text, reply_options = reply, None
+        print(f"📱网页版回复完成（{len(reply_text)} 字）")
+        return jsonify({"ok": True, "reply": reply_text, "options": reply_options})
     except Exception as e:
         import traceback
         traceback.print_exc()

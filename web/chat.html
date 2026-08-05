@@ -110,6 +110,7 @@ async function runChat(text){
     typing.remove();
     if (r.status === 401) { showLogin(); return; }
     addMsg(d.ok ? d.reply : '❌ ' + (d.error || '出错了'), 'bot');
+    if (d.ok && d.options) renderOptions(d.options);
   } catch (e) {
     typing.remove();
     addMsg('❌ 网络错误：' + e.message, 'bot');
