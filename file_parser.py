@@ -62,10 +62,11 @@ def _ocr_call(img) -> list:
     res = None
     try:
         res = _ocr_engine.ocr(img, cls=True)
-    except Exception:
+    except Exception as e1:
         try:
             res = _ocr_engine.predict(img)
-        except Exception:
+        except Exception as e2:
+            print(f"⚠️本地OCR调用失败：ocr={e1}，predict={e2}")
             return []
     lines = []
     if not res:
@@ -192,21 +193,35 @@ def _friendly_api_error(status_code: int, resp_text: str) -> str:
     return f"视觉接口返回异常（{status_code}）：{resp_text[:200]}"
 
 
+last_local_ocr_error = ""
+
+
 def _ocr_image_bytes_local(file_bytes: bytes, mime: str = "image/png") -> str:
     """使用本地 PaddleOCR 识别图片文字（免费，不需要 API 余额）"""
+    global last_local_ocr_error
+    last_local_ocr_error = ""
     try:
         import numpy as np
         from PIL import Image
         if _init_ocr_engine() is None:
+            last_local_ocr_error = "本地OCR引擎初始化失败，请查看日志"
             return ""
         img = Image.open(io.BytesIO(file_bytes))
         arr = np.array(img.convert("RGB"))
+        print("⏳本地OCR识别中（首次识别可能较慢）...")
         lines = _ocr_call(arr)
-        return clean_document_text("\n".join(lines))
+        if not lines:
+            last_local_ocr_error = "本地OCR未识别出文字，图片可能不够清晰或为纯照片"
+            return ""
+        text = clean_document_text("\n".join(lines))
+        print(f"✅本地OCR识别完成：{len(lines)} 行文字")
+        return text
     except ImportError:
+        last_local_ocr_error = "服务器未安装本地OCR（可执行 pip install paddleocr paddlepaddle）"
         print("⚠️本地OCR未安装：如需免费离线识别，请执行 pip install paddleocr paddlepaddle")
         return ""
     except Exception as e:
+        last_local_ocr_error = f"本地OCR识别失败：{e}"
         print(f"⚠️本地OCR识别失败：{e}")
         return ""
 
@@ -254,6 +269,8 @@ def extract_image_text(file_bytes: bytes, mime: str = "image/png") -> str:
         if local_text.strip():
             last_image_error = ""
             return local_text
+        if last_local_ocr_error:
+            last_image_error = last_local_ocr_error
         return ""
     except Exception as e:
         last_image_error = str(e)
