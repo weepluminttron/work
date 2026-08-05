@@ -154,7 +154,13 @@ function renderOptions(options){
     const b = document.createElement('button');
     b.className = 'opt-btn';
     b.textContent = o.label;
-    b.addEventListener('click', () => fetchOptions(o.payload));
+    b.addEventListener('click', () => {
+      if (o.payload && o.payload.step === 'run') {
+        runChat(o.payload.cmd);
+      } else {
+        fetchOptions(o.payload);
+      }
+    });
     box.appendChild(b);
   });
   div.appendChild(box);
