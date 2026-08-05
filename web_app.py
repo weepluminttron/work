@@ -87,8 +87,10 @@ def status():
 def login():
     data = request.get_json(silent=True) or {}
     if WEB_PASSWORD and data.get("password") != WEB_PASSWORD:
+        print("📱网页版登录失败：密码错误")
         return jsonify({"ok": False, "error": "密码错误"}), 401
     session["auth"] = True
+    print("📱网页版登录成功")
     return jsonify({"ok": True})
 
 
@@ -266,14 +268,17 @@ def handle_web_command(text: str) -> str:
 def chat():
     data = request.get_json(silent=True) or {}
     text = (data.get("message") or "").strip()
+    print(f"📱网页版收到消息：{text[:200]}")
     if not text:
         return jsonify({"ok": False, "error": "消息为空"})
     try:
         reply = handle_web_command(text)
+        print(f"📱网页版回复完成（{len(reply)} 字）")
         return jsonify({"ok": True, "reply": reply})
     except Exception as e:
         import traceback
         traceback.print_exc()
+        print(f"📱网页版处理异常：{e}")
         return jsonify({"ok": False, "error": f"处理失败：{e}"})
 
 
