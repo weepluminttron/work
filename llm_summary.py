@@ -99,3 +99,21 @@ def polish_text(text: str, lang: str = "") -> str:
 {text[:8000]}
 """
     return llm_request(prompt)
+
+def generate_memory_cards(text: str, subject: str, num: int = 12) -> str:
+    """把文档内容提炼成知识点和背诵卡片（结合用户语言习惯输出）"""
+    prompt = f"""
+你是学习助手。请把下面的{subject}课程资料提炼成「知识点」和「背诵卡片」，方便用户背诵复习。
+要求：
+1. 先用「📌 知识点」列出 3~5 条核心知识点（每条一句话，简洁明确）
+2. 再用「📇 背诵卡片」生成 {num} 张卡片，每张卡片固定格式：
+【卡片序号】主题
+问题：xxx
+答案：xxx
+3. 语言规则：整体用中文输出；如果内容涉及德语/英语，卡片采用「原文/术语 + 中文释义 + 例句」的形式，便于背诵
+4. 只输出以上两部分内容，不要任何开场白和额外解释
+
+【文档内容】
+{text[:8000]}
+"""
+    return llm_request(prompt)

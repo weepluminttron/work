@@ -255,6 +255,7 @@ def build_help_text() -> str:
 /list_test 列出最近试题记录
 /plan id 归档ID [days N] 🆕根据归档文档生成完整中长期学习计划
 /daily id 归档ID [days N] 🆕生成每日学习任务
+/cards id 归档ID 🆕把归档文档提炼成知识点和背诵卡片
 /done id 归档ID day N 🆕打卡完成第N天学习任务
 /progress id 归档ID 🆕查看学习进度
 /save 科目 知识点 手动归档最近文件
@@ -302,6 +303,7 @@ def build_menu_card() -> dict:
                 {"tag": "button", "text": {"tag": "plain_text", "content": "✍️ 文本润色"}, "value": {"cmd": "polish"}}
             ]},
             {"tag": "action", "actions": [
+                {"tag": "button", "text": {"tag": "plain_text", "content": "📇 背诵卡片"}, "value": {"cmd": "cards"}},
                 {"tag": "button", "text": {"tag": "plain_text", "content": "🗑 重建知识库"}, "value": {"cmd": "rebuild_kb"}}
             ]}
         ]
@@ -697,6 +699,30 @@ def process_message_task(event_data):
                 """
                 send_long_msg(receive_id, output)
 
+            elif content.startswith("/cards id"):
+                parts = content.split()
+                try:
+                    aid = int(parts[2])
+                except Exception:
+                    send_msg(receive_id, "📝用法：/cards id 归档ID\n示例：/cards id 3")
+                    return
+                from archive_db import get_archive_by_id
+                row = get_archive_by_id(aid)
+                if not row:
+                    send_msg(receive_id, f"❌未找到归档ID={aid}")
+                    return
+                if not row["file_text"] or len(row["file_text"].strip()) < 20:
+                    send_msg(receive_id, "该归档文档没有可用的文本内容")
+                    return
+                send_msg(receive_id, f"🤖正在把归档ID:{aid}【{row['subject']}】提炼成知识点和背诵卡片，请稍候...")
+                from llm_summary import generate_memory_cards
+                try:
+                    cards = generate_memory_cards(row["file_text"], row["subject"])
+                except Exception as e:
+                    send_msg(receive_id, f"❌生成失败：{str(e)}")
+                    return
+                send_long_msg(receive_id, f"📚【{row['subject']}】知识点与背诵卡片\n{format_msg(cards)}")
+
             elif content.startswith("/done id"):
                 parts = content.split()
                 try:
@@ -952,6 +978,11 @@ def handle_card_action(open_id: str, cmd: str):
 /polish id 归档ID
 /改写 你的文本
 可在文本前附修改要求，例如：/polish 德语 更口语化：xxx""")
+        elif cmd == "cards":
+            send_msg(open_id, """📇背诵卡片用法：
+/cards id 归档ID
+示例：/cards id 3
+我会把该归档文档提炼成核心知识点和背诵卡片（中文讲解，德语/英语内容配原文+释义+例句）""")
         elif cmd == "rebuild_kb":
             send_msg(open_id, "🔄开始重建全部向量知识库，耗时较长，请耐心等待...")
             try:
