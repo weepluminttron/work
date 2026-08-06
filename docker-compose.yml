@@ -1,0 +1,27 @@
+services:
+  study-agent:
+    build: .
+    image: study-agent:latest
+    container_name: study-agent
+    restart: unless-stopped
+    ports:
+      - "8080:8080"   # 飞书机器人回调
+      - "8090:8090"   # 网页版学习助手
+    env_file:
+      - .env
+    environment:
+      TZ: Asia/Shanghai
+      STUDY_DOCS_DIR: /app/data/study_docs
+      ARCHIVE_DB_PATH: /app/data/archive.db
+      MEMORY_DB_PATH: /app/data/memory_spaced_review.db
+      CHROMA_PATH: /app/data/chroma_study_kb
+      WRONG_BOOK_FILE: /app/data/wrong_book.json
+      QUIZ_RECORD_FILE: /app/data/quiz_records.json
+      TEST_CACHE_FILE: /app/data/test_record_cache.json
+    volumes:
+      - study-data:/app/data
+      - model-cache:/root/.cache
+
+volumes:
+  study-data:
+  model-cache:
