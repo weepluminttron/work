@@ -112,9 +112,11 @@
   .sidebar { display: none; width: 220px; background: var(--card); border-right: 1px solid var(--border); flex-direction: column; }
   .sidebar-head { display: flex; align-items: center; gap: 8px; padding: 16px 16px 12px; font-size: 16px; font-weight: 700; color: var(--text); }
   .sidebar-head .logo { width: 30px; height: 30px; border-radius: 9px; background: linear-gradient(135deg, var(--primary), var(--primary-2)); display: inline-flex; align-items: center; justify-content: center; font-size: 15px; }
-  .sidebar-nav { flex: 1; padding: 6px 10px; display: flex; flex-direction: column; gap: 4px; overflow-y: auto; }
-  .sidebar-nav .wbtn { text-align: left; padding: 10px 12px; border: none; background: transparent; color: var(--text); font-size: 14px; border-radius: 10px; cursor: pointer; border-right: none; transition: background .15s; }
-  .sidebar-nav .wbtn.active { background: var(--primary-soft); color: var(--primary); font-weight: 600; }
+  .sidebar-nav { flex: 1; padding: 2px 10px 10px; overflow-y: auto; }
+  .sidebar-group { padding: 14px 12px 6px; font-size: 12px; color: var(--text-3); }
+  .sidebar-item { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; padding: 9px 12px; border: none; background: transparent; color: var(--text); font-size: 13.5px; border-radius: 10px; cursor: pointer; transition: background .15s, color .15s; }
+  .sidebar-item:hover { background: var(--primary-soft); color: var(--primary); }
+  .sidebar-item:active { background: var(--primary-soft); }
   .sidebar-foot { padding: 14px 16px; font-size: 12px; color: var(--text-3); border-top: 1px solid var(--border); }
   .main-col { flex: 1; display: flex; flex-direction: column; min-width: 0; }
   header { background: var(--card); color: var(--text); border-bottom: 1px solid var(--border); box-shadow: none; padding: 12px 18px; }
@@ -149,11 +151,7 @@
   <div class="layout">
     <aside class="sidebar">
       <div class="sidebar-head"><span class="logo">📚</span><span>学习助手</span></div>
-      <div class="sidebar-nav">
-        <button class="wbtn" data-group="study">📚 学习</button>
-        <button class="wbtn" data-group="materials">📁 资料</button>
-        <button class="wbtn" data-group="more">⋯ 更多</button>
-      </div>
+      <div class="sidebar-nav" id="sidebarNav"></div>
       <div class="sidebar-foot">AI 智能学伴</div>
     </aside>
     <div class="main-col">
@@ -703,6 +701,31 @@ const MENU = {
     {label: '🧹 清空对话记忆', cmd: '/clear'}
   ]
 };
+
+function renderSidebar(){
+  const nav = $('#sidebarNav');
+  if (!nav) return;
+  nav.innerHTML = '';
+  const groupNames = {study: '学习', materials: '资料', more: '更多'};
+  Object.keys(MENU).forEach(group => {
+    const label = document.createElement('div');
+    label.className = 'sidebar-group';
+    label.textContent = groupNames[group] || group;
+    nav.appendChild(label);
+    MENU[group].forEach(item => {
+      const b = document.createElement('button');
+      b.className = 'sidebar-item';
+      b.textContent = item.label;
+      b.addEventListener('click', () => {
+        if (item.action === 'upload'){ $('#fileInput').click(); return; }
+        if (item.next){ startOptions(item.next); return; }
+        runChat(item.cmd);
+      });
+      nav.appendChild(b);
+    });
+  });
+}
+renderSidebar();
 
 let activeGroup = null;
 
