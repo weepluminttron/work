@@ -5,7 +5,7 @@ import functools
 import threading
 import uuid
 import time
-from flask import Flask, request, jsonify, session, send_file
+from flask import Flask, request, jsonify, session, send_file, g
 from quiz_logic import extract_answer_keys as _extract_answer_keys
 from quiz_logic import parse_quiz_options as _parse_quiz_options
 from quiz_logic import grade_paper
@@ -37,6 +37,44 @@ app = Flask(__name__)
 app.secret_key = os.getenv("WEB_SECRET_KEY", "study-assistant-web-secret")
 # 网页版登录密码：在服务器 .env 中设置 WEB_PASSWORD；不设置则无需登录（仅建议自用）
 WEB_PASSWORD = os.getenv("WEB_PASSWORD", "")
+
+
+@app.before_request
+def _set_request_ctx():
+    """每个请求生成日志ID并记录开始时间（对齐 Coze 的访问日志中间件）"""
+    g.log_id = uuid.uuid4().hex[:12]
+    g.start_time = time.time()
+
+
+@app.after_request
+def _log_request(resp):
+    """统一请求日志：方法/路径/状态码/耗时/日志ID"""
+    duration_ms = (time.time() - getattr(g, "start_time", time.time())) * 1000
+    log_id = getattr(g, "log_id", "-")
+    print(f"📡 {request.method} {request.path} -> {resp.status_code} ({duration_ms:.0f}ms) log_id={log_id}")
+    resp.headers["X-Log-ID"] = log_id
+    return resp
+
+
+@app.errorhandler(404)
+def _not_found(e):
+    return jsonify({"ok": False, "error": "接口不存在"}), 404
+
+
+@app.errorhandler(405)
+def _method_not_allowed(e):
+    return jsonify({"ok": False, "error": "方法不允许"}), 405
+
+
+@app.errorhandler(500)
+def _internal_error(e):
+    return jsonify({"ok": False, "error": "服务器内部错误"}), 500
+
+
+@app.route("/api/health")
+def health():
+    """健康检查接口（Docker HEALTHCHECK 使用）"""
+    return jsonify({"ok": True, "service": "study-agent", "time": int(time.time())})
 
 # 自测题答案暂存：{归档ID: 答案文本}，点“查看答案”按钮时返回
 _web_answers = {}
@@ -164,6 +202,7 @@ HELP_TEXT = """📚 网页版学习助手指令：
 /extra              查看额外任务（今日完成后的拓展学习）
 /report             学情诊断报告（连续打卡/分科进度/欠账建议）
 /wrong              错题本（查看/记录/清除做错的题）
+/clear              清空对话记忆（开始新话题）
 /cards id 3         把归档文档生成背诵卡片
 /test id 3          把归档文档生成自测题
 /plan id 3 [days 7]  生成完整学习计划
@@ -429,10 +468,21 @@ def handle_web_command(text: str) -> str:
     """处理网页版指令/自由提问，返回回复文本"""
     if not text.startswith("/"):
         from vector_kb import rag_answer
-        return rag_answer(text)
+        from chat_memory import add_turn, get_history
+        key = "web"
+        history = get_history(key)
+        reply = rag_answer(text, history)
+        add_turn(key, "user", text)
+        add_turn(key, "assistant", reply)
+        return reply
 
     parts = text.split()
     cmd = parts[0].lower()
+
+    if cmd in ("/clear", "/清空记忆"):
+        from chat_memory import clear_history
+        removed = clear_history("web")
+        return "✅ 已清空对话记忆，开始新话题" + (f"（清理 {removed} 条消息）" if removed else "")
 
     if cmd in ("/help", "/菜单", "/指令"):
         return HELP_TEXT

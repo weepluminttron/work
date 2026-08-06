@@ -327,14 +327,22 @@ def build_rag_context(user_query: str) -> str:
 
     return "\n\n=====\n\n".join(context_blocks)
 
-# 对外统一问答入口（给feishu bot调用）
-def rag_answer(user_question: str) -> str:
+# 对外统一问答入口（给网页版/飞书 bot 调用，支持多轮记忆）
+def rag_answer(user_question: str, history: list = None) -> str:
     context = build_rag_context(user_question)
+    history_block = ""
+    if history:
+        lines = ["【最近对话】"]
+        for item in history[-6:]:
+            role = "用户" if item.get("role") == "user" else "助手"
+            lines.append(f"{role}：{item.get('text', '')[:300]}")
+        history_block = "\n".join(lines) + "\n\n"
     prompt = f"""
 你是学习助理。优先使用提供的本地归档课程资料回答用户问题；
 本地资料不足时结合互联网搜索内容；严禁编造不存在的知识点。
+请结合【最近对话】理解用户的追问，回答要连贯。
 
-【参考资料】
+{history_block}【参考资料】
 {context}
 
 用户问题：{user_question}

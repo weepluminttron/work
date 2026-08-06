@@ -218,12 +218,22 @@ def handle_default_rag(ctx):
     ctx.send_msg(ctx.receive_id, "🤖正在检索本地归档资料，请稍候...")
     try:
         from vector_kb import rag_answer
-        reply = rag_answer(ctx.content)
+        from chat_memory import add_turn, get_history
+        history = get_history(ctx.receive_id)
+        reply = rag_answer(ctx.content, history)
+        add_turn(ctx.receive_id, "user", ctx.content)
+        add_turn(ctx.receive_id, "assistant", reply)
         ctx.send_long_msg(ctx.receive_id, reply)
     except Exception as e:
         import traceback
         traceback.print_exc()
         ctx.send_msg(ctx.receive_id, f"问答服务出错：{str(e)}")
+
+
+def handle_clear(ctx):
+    from chat_memory import clear_history
+    removed = clear_history(ctx.receive_id)
+    ctx.send_msg(ctx.receive_id, "✅ 已清空对话记忆，开始新话题" + (f"（清理 {removed} 条消息）" if removed else ""))
 
 
 # ===================== 命令注册表 =====================
@@ -232,6 +242,8 @@ EXACT_HANDLERS = {
     "/list_test": handle_list_test,
     "/rebuild_kb": handle_rebuild_kb,
     "/tip": handle_tip,
+    "/clear": handle_clear,
+    "/清空记忆": handle_clear,
 }
 
 PREFIX_HANDLERS = [
