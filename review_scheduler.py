@@ -344,6 +344,41 @@ def push_daily_tasks_to_feishu():
         print("❌定时推送异常：", str(e))
         print(traceback.format_exc())
 
+
+def push_evening_reminder_to_feishu():
+    """晚间督促：今天还有任务没完成时，推送提醒+鼓励"""
+    try:
+        webhook = FEISHU_WEBHOOK
+        if not webhook or webhook.startswith("在此处填入") or len(webhook) < 10:
+            print("⚠️未配置FEISHU_WEBHOOK，跳过晚间提醒")
+            return
+        task_text = get_today_learning_tasks()
+        if "今日待办" not in task_text and "补 Day" not in task_text:
+            print("ℹ️今日任务已完成，无需晚间提醒")
+            return
+        streak = get_study_streak()
+        streak_line = f"\n🔥 已连续打卡 {streak} 天" if streak else ""
+        full_msg = f"""🌙【晚间学习督促】{streak_line}
+{task_text}
+
+💡别让任务过夜，完成一点也比拖延强：
+/done id 归档ID day N → 打卡
+/today → 查看今日待办
+/report → 查看学情诊断
+"""
+        if len(full_msg) > 4500:
+            full_msg = full_msg[:4500] + "\n……内容过长，请在机器人内发送指令查看完整信息"
+        payload = {
+            "msg_type": "text",
+            "content": {"text": full_msg}
+        }
+        resp = requests.post(webhook, json=payload, timeout=10)
+        print("✅晚间督促推送完成", resp.json())
+    except Exception as e:
+        import traceback
+        print("❌晚间督促推送异常：", str(e))
+        print(traceback.format_exc())
+
 # 全局调度器单例
 _scheduler = None
 
@@ -368,8 +403,16 @@ def start_review_scheduler():
         coalesce=True,
         misfire_grace_time=300
     )
+    _scheduler.add_job(
+        push_evening_reminder_to_feishu,
+        "cron",
+        hour=20,
+        minute=0,
+        coalesce=True,
+        misfire_grace_time=300
+    )
     _scheduler.start()
-    print(f"⏰ 每日晨间任务推送调度器启动【Asia/Shanghai】，每日{REVIEW_PUSH_HOUR}:00推送")
+    print(f"⏰ 学习督促调度器启动【Asia/Shanghai】：每日{REVIEW_PUSH_HOUR}:00晨间推送，20:00晚间督促")
     return _scheduler
 
 def shutdown_scheduler():

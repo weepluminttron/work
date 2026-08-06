@@ -115,7 +115,10 @@ def generate_study_plan(doc_content: str, subject: str):
     res = llm_request(prompt)
     return format_msg(res)
 
-def split_plan_to_daily_tasks(full_plan: str, subject: str, days: int = 5):
+def split_plan_to_daily_tasks(full_plan: str, subject: str, days: int = 5, daily_minutes: int = None):
+    time_rule = ""
+    if daily_minutes:
+        time_rule = f"4. 每天学习时长约 {daily_minutes} 分钟，请严格按这个时间量拆分每天任务，保证内容均衡覆盖"
     prompt = f"""
 你是学习拆解助手。
 已有完整中长期学习规划，均衡拆分为【{days}天每日学习清单】
@@ -132,6 +135,7 @@ def split_plan_to_daily_tasks(full_plan: str, subject: str, days: int = 5):
 任务内容：xxx
 重点：xxx
 自测：xxx
+{time_rule}
 科目：{subject}
 整体学习规划：
 {full_plan[:6000]}

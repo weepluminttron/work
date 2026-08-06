@@ -130,9 +130,10 @@ HELP_TEXT = """📚 网页版学习助手指令：
 /cards id 3         把归档文档生成背诵卡片
 /test id 3          把归档文档生成自测题
 /plan id 3 [days 7]  生成完整学习计划
-/daily id 3 [days 5] 生成每日任务并保存
+/daily id 3 [days 5] [每天60分钟] 生成每日任务并保存（可指定每天学习时长）
 /progress id 3      查看学习进度
 /done id 3 day 2    打卡完成第2天任务
+/submit id 3 B,A,C,D 提交自测题答案，自动批改客观题并记入错题本
 /del id 3           删除归档文档（同步清理知识库）
 /polish 德语 文本    润色德语/英语文本（或 /polish id 3）
 /merge 科目名        把同科目的所有文档合并为一条归档
@@ -207,6 +208,20 @@ def _parse_aid(parts):
     except ValueError:
         return None
     return None
+
+
+def _extract_answer_keys(answer_text: str) -> dict:
+    """从答案文本中提取选择题正确答案：{题号: 选项字母}"""
+    import re
+    keys = {}
+    pat1 = re.compile(r"(?m)^\s*(\d{1,3})\s*[.、．]\s*(?:正确答案|答案)\s*[：:]\s*([A-Da-d])\b")
+    for m in pat1.finditer(answer_text or ""):
+        keys.setdefault(int(m.group(1)), m.group(2).upper())
+    if not keys:
+        pat2 = re.compile(r"(?m)^\s*(\d{1,3})\s*[.、．]\s*([A-Da-d])\s*[.、．)）]\s*")
+        for m in pat2.finditer(answer_text or ""):
+            keys.setdefault(int(m.group(1)), m.group(2).upper())
+    return keys
 
 
 def _get_archive(aid):
@@ -296,9 +311,60 @@ def handle_web_command(text: str) -> str:
         if len(_web_answers) >= 100:
             _web_answers.pop(next(iter(_web_answers)))
         _web_answers[aid] = a
-        _web_papers[aid] = {"q": q, "a": a, "subject": row["subject"]}
+        _web_papers[aid] = {"q": q, "a": a, "subject": row["subject"], "keys": _extract_answer_keys(a)}
         print(f"📱网页版已生成20道题并暂存答案：归档ID {aid}")
-        return q, [{"label": "📖 查看答案", "payload": {"step": "run", "cmd": f"/answer id {aid}"}}]
+        return q + f"\n\n💡做完题发送 /submit id {aid} 答案（如 B,A,C,D）可自动批改客观题", [
+            {"label": "📖 查看答案", "payload": {"step": "run", "cmd": f"/answer id {aid}"}}
+        ]
+
+    if cmd == "/submit":
+        import re
+        from wrong_book import add_wrong_paper, split_numbered
+        aid = _parse_aid(parts)
+        if aid is None:
+            return "用法：/submit id 归档ID 你的答案\n示例：/submit id 3 B,A,C,D"
+        paper = _web_papers.get(aid)
+        if not paper:
+            return "请先通过「自测题」生成该归档的题目，再提交答案"
+        keys = paper.get("keys") or {}
+        if not keys:
+            return "⚠️这份试卷的答案格式不统一，无法自动批改。请用 /answer id 归档ID 查看答案自行核对"
+        raw_answers = "".join(parts[3:])
+        user_answers = [x.strip().upper() for x in re.split(r"[,，\s、]+", raw_answers) if x.strip()]
+        q_nos = [no for no, _ in split_numbered(paper["q"])]
+        a_map = {no: txt for no, txt in split_numbered(paper["a"])}
+
+        lines = [f"📝【归档ID {aid}】客观题批改结果"]
+        correct = 0
+        graded = 0
+        wrong_nos = []
+        for i, no in enumerate(q_nos):
+            if no not in keys:
+                continue
+            correct_key = keys[no]
+            user_key = user_answers[i] if i < len(user_answers) else "未作答"
+            graded += 1
+            if user_key == correct_key:
+                correct += 1
+                lines.append(f"✅ 第{no}题：你的答案 {user_key} 正确")
+            else:
+                wrong_nos.append(no)
+                lines.append(f"❌ 第{no}题：你的答案 {user_key}，正确答案 {correct_key}")
+            exp = a_map.get(no, "")
+            if exp:
+                exp_short = re.sub(r"^\s*\d{1,3}\s*[.、．]\s*", "", exp).strip()
+                lines.append(f"   📖 {exp_short[:150]}")
+        if graded == 0:
+            return "这份试卷没有可自动批改的客观题（可能全是简答题），请用 /answer 查看答案"
+        lines.append(f"\n🎯 客观题 {correct}/{graded} 正确")
+        if wrong_nos:
+            add_wrong_paper(aid, paper["subject"], paper["q"], paper["a"], wrong_nos)
+            lines.append(f"📕 已自动将 {len(wrong_nos)} 道错题记入错题本")
+            return "\n".join(lines), [
+                {"label": "📕 复习错题", "payload": {"step": "run", "cmd": f"/wrong id {aid}"}}
+            ]
+        lines.append("🎉 全部正确，继续保持！")
+        return "\n".join(lines)
 
     if cmd == "/answer":
         aid = _parse_aid(parts)
@@ -331,7 +397,7 @@ def handle_web_command(text: str) -> str:
     if cmd == "/daily":
         aid = _parse_aid(parts)
         if aid is None:
-            return "用法：/daily id 归档ID [days 5]"
+            return "用法：/daily id 归档ID [days 5] [每天60分钟]"
         row = _get_archive(aid)
         if not row:
             return f"❌未找到归档ID {aid}"
@@ -341,13 +407,21 @@ def handle_web_command(text: str) -> str:
                 days = max(2, min(14, int(parts[4])))
             except ValueError:
                 pass
+        import re as _re
+        daily_minutes = None
+        for tok in parts[4:]:
+            if "分钟" in tok:
+                nums = _re.findall(r"\d+", tok)
+                if nums:
+                    daily_minutes = max(15, min(240, int(nums[0])))
         from llm_summary import generate_study_plan, split_plan_to_daily_tasks, extract_task_list
         from review_scheduler import save_daily_tasks
         plan = generate_study_plan(row["file_text"], row["subject"])
-        daily_text = split_plan_to_daily_tasks(plan, row["subject"], days)
+        daily_text = split_plan_to_daily_tasks(plan, row["subject"], days, daily_minutes)
         task_list = extract_task_list(daily_text)
         save_daily_tasks(aid, row["subject"], task_list)
-        return f"📆【{row['subject']}】每日学习任务（{days}天）\n\n{daily_text}\n\n💡完成后用 /done id {aid} day 天数 打卡"
+        time_note = f"，每天约 {daily_minutes} 分钟" if daily_minutes else ""
+        return f"📆【{row['subject']}】每日学习任务（{days}天{time_note}）\n\n{daily_text}\n\n💡完成后用 /done id {aid} day 天数 打卡"
 
     if cmd == "/done":
         try:
@@ -631,7 +705,23 @@ def options():
                 for d in (3, 5, 7, 10, 14)
             ]
             return jsonify({"ok": True, "prompt": "③ 选择学习天数：", "options": options_list})
+        if next_cmd == "daily":
+            return jsonify({
+                "ok": True,
+                "prompt": "④ 选择每天学习时长：",
+                "options": [
+                    {"label": f"{m} 分钟", "payload": {"step": "minutes", "next": "daily", "subject": subject, "aid": aid, "days": days, "minutes": m}}
+                    for m in (30, 60, 90, 120)
+                ]
+            })
         cmd = f"/{next_cmd} id {aid} days {days}"
+        print(f"📱网页版选项完成，执行：{cmd}")
+        return jsonify({"ok": True, "prompt": "", "options": [], "run": cmd})
+
+    if step == "minutes":
+        days = data.get("days")
+        minutes = data.get("minutes")
+        cmd = f"/daily id {aid} days {days} 每天{minutes}分钟"
         print(f"📱网页版选项完成，执行：{cmd}")
         return jsonify({"ok": True, "prompt": "", "options": [], "run": cmd})
 
