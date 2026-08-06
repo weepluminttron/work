@@ -59,6 +59,16 @@ def parse_quiz_options(q_text: str) -> list:
     return options
 
 
+def clean_question_text(text: str) -> str:
+    """清理题目文本：去掉行首编号与加粗标记，用于界面展示（保留选项行）"""
+    t = re.sub(r"^\s*\*{0,2}\s*\d{1,3}\s*[.、．:：]\s*\*{0,2}", "", text or "", count=1)
+    lines = t.split("\n")
+    if lines and lines[0].endswith("**"):
+        lines[0] = lines[0][:-2]
+    t = "\n".join(lines)
+    return t.strip()
+
+
 def grade_paper(paper: dict, raw_answers: str) -> dict:
     """批改试卷（纯逻辑，不写错题本）。
     返回 {ok, reply, graded, correct, wrong_nos, short_items}

@@ -8,7 +8,7 @@ import time
 from flask import Flask, request, jsonify, session, send_file, g
 from quiz_logic import extract_answer_keys as _extract_answer_keys
 from quiz_logic import parse_quiz_options as _parse_quiz_options
-from quiz_logic import grade_paper
+from quiz_logic import grade_paper, clean_question_text
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 WEB_DIR = os.path.join(BASE_DIR, "web")
@@ -794,7 +794,7 @@ def handle_web_command(text: str) -> str:
                 return "📕 该归档暂无错题"
             lines = [f"📕【归档ID {aid}】错题本（{len(items)} 道）"]
             for it in items:
-                lines.append(f"\n❌第{it['no']}题：\n{it['q']}")
+                lines.append(f"\n❌第{it['no']}题：\n{clean_question_text(it.get('q', ''))}")
                 if it.get("a"):
                     lines.append(f"📖参考：{it['a']}")
             lines.append(f"\n💡掌握后发送 /wrong done id {aid} 题号 清除")

@@ -4,7 +4,7 @@ import sys
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from quiz_logic import extract_answer_keys, grade_paper, parse_quiz_options
+from quiz_logic import clean_question_text, extract_answer_keys, grade_paper, parse_quiz_options
 
 
 class QuizLogicTest(unittest.TestCase):
@@ -60,6 +60,10 @@ class QuizLogicTest(unittest.TestCase):
         opts = parse_quiz_options(q)
         self.assertEqual([o["key"] for o in opts], ["A", "B", "C"])
         self.assertEqual(opts[0]["text"], "\u9009\u9879\u7532")
+
+    def test_clean_question_text(self):
+        self.assertEqual(clean_question_text("**1. \u9898\u76ee**\nA. \u7532\nB. \u4e59"), "\u9898\u76ee\nA. \u7532\nB. \u4e59")
+        self.assertEqual(clean_question_text("1\uff1a\u9898\u76ee\u4e8c\nA. x"), "\u9898\u76ee\u4e8c\nA. x")
 
     def _paper(self, keys=None):
         return {
