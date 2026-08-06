@@ -3,7 +3,7 @@ import threading
 import atexit
 import os
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 import requests
 from apscheduler.schedulers.background import BackgroundScheduler
 from config import MEMORY_DB_PATH, REVIEW_PUSH_HOUR, FEISHU_WEBHOOK
@@ -196,6 +196,118 @@ def get_extra_learning_tasks():
     output += "\n💡这些是今天之后的内容，学有余力时提前预习"
     return output
 
+# ===================== 激励与诊断：连续打卡 + 学情报告 =====================
+
+def get_study_streak() -> int:
+    """连续打卡天数：今天打过卡则从今天算，否则从昨天开始算"""
+    init_memory_db()
+    with DB_LOCK:
+        conn = get_db_conn()
+        cur = conn.cursor()
+        cur.execute("""
+        SELECT DISTINCT complete_date FROM study_progress
+        WHERE finished = 1 AND complete_date IS NOT NULL AND complete_date != ''
+        """)
+        dates = [r[0] for r in cur.fetchall()]
+    if not dates:
+        return 0
+    date_set = set(dates)
+    today = datetime.now().date()
+    anchor = today if today.isoformat() in date_set else today - timedelta(days=1)
+    streak = 0
+    d = anchor
+    while d.isoformat() in date_set:
+        streak += 1
+        d -= timedelta(days=1)
+    return streak
+
+
+def _encourage_text(rate: float) -> str:
+    if rate >= 0.9:
+        return "🎉 状态极佳！保持这个节奏，你正在形成自己的学习惯性。"
+    if rate >= 0.6:
+        return "💪 进度不错！把薄弱科目补上，就能更上一层楼。"
+    if rate >= 0.3:
+        return "🌱 已经迈出第一步了，每天完成一点点，累积就是质变。"
+    return "🌟 开始永远不晚，先从补上最近的一天开始，学习助手陪你一起。"
+
+
+def get_study_report() -> str:
+    """学情诊断报告：监测 → 诊断 → 建议（干预）→ 鼓励"""
+    init_memory_db()
+    today_dt = datetime.now().date()
+    with DB_LOCK:
+        conn = get_db_conn()
+        conn.row_factory = sqlite3.Row
+        cur = conn.cursor()
+        cur.execute("""
+        SELECT archive_id, subject, day_no, finished, start_date
+        FROM study_progress
+        """)
+        rows = cur.fetchall()
+    if not rows:
+        return "📊 还没有学习记录。\n先去「资料」上传文档，再生成每日任务，学习助手会帮你规划、追踪和复盘。"
+
+    total = len(rows)
+    finished = sum(1 for r in rows if r["finished"])
+    rate = finished / total if total else 0.0
+
+    start_map = {}
+    for r in rows:
+        if r["archive_id"] not in start_map:
+            try:
+                start_map[r["archive_id"]] = datetime.strptime(r["start_date"], "%Y-%m-%d").date()
+            except (TypeError, ValueError):
+                start_map[r["archive_id"]] = today_dt
+
+    subjects = {}
+    overdue_total = 0
+    for r in rows:
+        sid = r["archive_id"]
+        subj = r["subject"] or "未分类"
+        st = subjects.setdefault(subj, {"total": 0, "finished": 0, "overdue": 0})
+        st["total"] += 1
+        if r["finished"]:
+            st["finished"] += 1
+        else:
+            current_day = max(1, (today_dt - start_map[sid]).days + 1)
+            if r["day_no"] < current_day:
+                st["overdue"] += 1
+                overdue_total += 1
+
+    streak = get_study_streak()
+    lines = [
+        "📊【学情诊断报告】",
+        f"🔥 连续打卡：{streak} 天" if streak else "🔥 连续打卡：还没有开始",
+        f"📚 任务总览：{len(subjects)} 个科目 / {total} 个任务，完成 {finished}（{rate * 100:.0f}%）",
+        "",
+        "📈 分科情况：",
+    ]
+    for subj, st in sorted(
+        subjects.items(),
+        key=lambda kv: (kv[1]["finished"] / kv[1]["total"] if kv[1]["total"] else 1, kv[0])
+    ):
+        r = st["finished"] / st["total"] * 100
+        mark = "✅" if st["overdue"] == 0 and st["finished"] == st["total"] else "⏳"
+        overdue_txt = f"，{st['overdue']} 天欠账" if st["overdue"] else ""
+        lines.append(f"{mark} {subj}：{st['finished']}/{st['total']} 完成（{r:.0f}%）{overdue_txt}")
+
+    lines.append("")
+    lines.append("💡 诊断建议：")
+    if overdue_total > 0:
+        lines.append(f"- 有 {overdue_total} 天任务欠账，建议先用「今日任务」把欠账补上，再进入新内容。")
+    weak_subj = min(
+        subjects.items(),
+        key=lambda kv: kv[1]["finished"] / kv[1]["total"] if kv[1]["total"] else 1
+    )
+    if weak_subj[1]["finished"] < weak_subj[1]["total"]:
+        lines.append(f"- 「{weak_subj[0]}」目前完成率最低，建议今天优先安排它。")
+    if finished == total:
+        lines.append("- 全部任务已完成！可以提前预习「额外任务」，或上传新资料继续拓展。")
+    lines.append("")
+    lines.append(_encourage_text(rate))
+    return "\n".join(lines)
+
 # ===================== 晨间推送：今日学习任务 =====================
 def push_daily_tasks_to_feishu():
     """定时任务：每日早上推送今日待办学习任务"""
@@ -207,7 +319,9 @@ def push_daily_tasks_to_feishu():
             print("⚠️未配置FEISHU_WEBHOOK，跳过定时推送")
             return
 
-        full_msg = f"""⏰【晨间学习提醒】
+        streak = get_study_streak()
+        streak_line = f"\n🔥 已连续打卡 {streak} 天" if streak else ""
+        full_msg = f"""⏰【晨间学习提醒】{streak_line}
 {task_text}
 
 💡指令提示：

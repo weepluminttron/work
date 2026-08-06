@@ -37,6 +37,8 @@ WEB_PASSWORD = os.getenv("WEB_PASSWORD", "")
 
 # 自测题答案暂存：{归档ID: 答案文本}，点“查看答案”按钮时返回
 _web_answers = {}
+# 自测题整卷暂存：{归档ID: {q, a, subject}}，供错题本记录使用
+_web_papers = {}
 
 # 后台任务：{task_id: {"status": "running"/"done"/"error", "reply": ..., "options": ..., "error": ..., "ts": ...}}
 _task_results = {}
@@ -123,6 +125,8 @@ HELP_TEXT = """📚 网页版学习助手指令：
 /list               查看归档清单
 /today              查看今日待办任务
 /extra              查看额外任务（今日完成后的拓展学习）
+/report             学情诊断报告（连续打卡/分科进度/欠账建议）
+/wrong              错题本（查看/记录/清除做错的题）
 /cards id 3         把归档文档生成背诵卡片
 /test id 3          把归档文档生成自测题
 /plan id 3 [days 7]  生成完整学习计划
@@ -292,6 +296,7 @@ def handle_web_command(text: str) -> str:
         if len(_web_answers) >= 100:
             _web_answers.pop(next(iter(_web_answers)))
         _web_answers[aid] = a
+        _web_papers[aid] = {"q": q, "a": a, "subject": row["subject"]}
         print(f"📱网页版已生成20道题并暂存答案：归档ID {aid}")
         return q, [{"label": "📖 查看答案", "payload": {"step": "run", "cmd": f"/answer id {aid}"}}]
 
@@ -302,7 +307,9 @@ def handle_web_command(text: str) -> str:
         ans = _web_answers.get(aid)
         if not ans:
             return "暂无该归档的答案，请先通过「自测题」生成题目"
-        return f"📖【参考答案】\n{ans}"
+        return f"📖【参考答案】\n{ans}", [
+            {"label": "📕 有错题，记入错题本", "payload": {"step": "run", "cmd": f"/wrong add id {aid}"}}
+        ]
 
     if cmd == "/plan":
         aid = _parse_aid(parts)
@@ -354,7 +361,62 @@ def handle_web_command(text: str) -> str:
             return "用法：/done id 归档ID day 天数"
         from review_scheduler import mark_task_finished
         ok = mark_task_finished(aid, day_num)
-        return f"✅已标记归档ID:{aid} 第{day_num}天任务完成！" if ok else "❌未找到对应任务"
+        if not ok:
+            return "❌未找到对应任务"
+        from review_scheduler import get_study_streak
+        streak = get_study_streak()
+        encourage = f"🔥 已连续打卡 {streak} 天！" if streak > 1 else "🎉 打卡成功，继续保持！"
+        return f"✅已标记归档ID:{aid} 第{day_num}天任务完成！{encourage}"
+
+    if cmd == "/report":
+        from review_scheduler import get_study_report
+        return get_study_report()
+
+    if cmd == "/wrong":
+        from wrong_book import add_wrong_paper, clear_wrong, get_wrong, list_wrong
+        sub = parts[1].lower() if len(parts) > 1 else ""
+        aid = _parse_aid(parts)
+
+        if sub in ("add", "done"):
+            if aid is None:
+                return f"用法：/wrong {sub} id 归档ID [题号,多个用逗号]"
+            numbers = []
+            for tok in parts[3:]:
+                for n in tok.replace("，", ",").split(","):
+                    n = n.strip()
+                    if n.isdigit():
+                        numbers.append(int(n))
+            if sub == "add":
+                paper = _web_papers.get(aid)
+                if not paper:
+                    return "📕 请先做该归档的自测题，才能标记错题"
+                added = add_wrong_paper(aid, paper["subject"], paper["q"], paper["a"], numbers or None)
+                if not added:
+                    return "❌没有找到对应的题号，请检查后重试"
+                return f"📕 已记录 {added} 道错题（归档ID {aid}）。\n复习：/wrong id {aid}\n掌握后可清除：/wrong done id {aid} 题号"
+            removed = clear_wrong(aid, numbers or None)
+            return f"✅ 已清除 {removed} 道错题" if removed else "没有找到可清除的错题"
+
+        if aid is not None:
+            items = get_wrong(aid)
+            if not items:
+                return "📕 该归档暂无错题"
+            lines = [f"📕【归档ID {aid}】错题本（{len(items)} 道）"]
+            for it in items:
+                lines.append(f"\n❌第{it['no']}题：\n{it['q']}")
+                if it.get("a"):
+                    lines.append(f"📖参考：{it['a']}")
+            lines.append(f"\n💡掌握后发送 /wrong done id {aid} 题号 清除")
+            return "\n".join(lines)
+
+        lst = list_wrong()
+        if not lst:
+            return "📕 错题本还是空的。\n做自测题 → 查看答案 → 点「有错题，记入错题本」即可记录"
+        lines = ["📕【错题本总览】"]
+        for x in lst:
+            lines.append(f"归档ID {x['aid']}｜{x['subject']}｜{x['count']} 道错题")
+        lines.append("\n💡查看：/wrong id 归档ID\n💡清除：/wrong done id 归档ID")
+        return "\n".join(lines)
 
     if cmd == "/progress":
         aid = _parse_aid(parts)

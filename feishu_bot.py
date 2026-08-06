@@ -259,6 +259,7 @@ def build_help_text() -> str:
 /cards id 归档ID 🆕把归档文档提炼成知识点和背诵卡片
 /done id 归档ID day N 🆕打卡完成第N天学习任务
 /progress id 归档ID 🆕查看学习进度
+/report 🆕学情诊断报告（连续打卡/分科进度/欠账建议）
 /save 科目 知识点 手动归档最近文件
 /del id 数字 删除归档文档（同步清理向量库）
 /rebuild_kb 全量重建向量知识库
@@ -643,7 +644,10 @@ def process_message_task(event_data):
                 from review_scheduler import mark_task_finished
                 ok = mark_task_finished(aid, day_num)
                 if ok:
-                    send_msg(receive_id, f"✅已标记归档ID:{aid} 第{day_num}天任务完成！")
+                    from review_scheduler import get_study_streak
+                    streak = get_study_streak()
+                    encourage = f"🔥 已连续打卡 {streak} 天！" if streak > 1 else "🎉 打卡成功，继续保持！"
+                    send_msg(receive_id, f"✅已标记归档ID:{aid} 第{day_num}天任务完成！{encourage}")
                 else:
                     send_msg(receive_id, f"❌未找到对应任务，检查归档ID或天数是否正确")
 
@@ -668,6 +672,10 @@ def process_message_task(event_data):
                     complete_day = r["complete_date"] if r["complete_date"] else "未打卡"
                     msg_lines.append(f"Day{r['day_no']} {status} | {complete_day}")
                 send_long_msg(receive_id, "\n".join(msg_lines))
+
+            elif content.startswith("/report"):
+                from review_scheduler import get_study_report
+                send_long_msg(receive_id, get_study_report())
 
             elif content.startswith("/save"):
                 parts = content.split(maxsplit=2)
