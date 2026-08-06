@@ -8,6 +8,7 @@ from llm_summary import (
     generate_memory_cards,
     polish_text,
     format_msg,
+    llm_request,
 )
 from review_scheduler import (
     save_daily_tasks,
@@ -169,3 +170,68 @@ def rebuild_text() -> str:
         import traceback
         traceback.print_exc()
         return f"❌重建知识库失败：{str(e)}"
+
+
+def grade_short_answers_text(short_items: list):
+    """调用大模型批改简答题，返回 (点评文本, 判定为错的题号列表)"""
+    import json
+    import re
+    if not short_items:
+        return "", []
+    prompt_lines = [
+        "你是严谨的批改老师，请判断下面每道简答题的作答是否正确。",
+        '只输出JSON数组，不要任何额外文字，格式：[{"no":1,"judge":"正确|部分正确|错误","score":80,"comment":"一句点评"}]',
+        "",
+    ]
+    for it in short_items:
+        prompt_lines.append(
+            f"第{it['no']}题\n题目：{it.get('q', '')}\n参考答案：{it.get('ref', '')}\n学生答案：{it.get('user', '')}\n"
+        )
+    resp = llm_request("\n".join(prompt_lines), timeout=60)
+    wrong_nos = []
+    if resp.startswith("❌"):
+        # 大模型调用失败：退化为展示参考答案，让学生自己核对
+        lines = []
+        for it in short_items:
+            lines.append(f"❌ 第{it['no']}题（AI批改失败）\n你的答案：{it.get('user', '')}\n📖 参考答案：{it.get('ref', '') or '（无）'}")
+        return "\n".join(lines), []
+
+    data = None
+    m = re.search(r"\[.*\]", resp, re.DOTALL)
+    if m:
+        try:
+            data = json.loads(m.group())
+        except Exception:
+            data = None
+    if not data:
+        data = {}
+        for it in short_items:
+            seg = re.search(rf"第?\s*{it['no']}\s*题.*?(正确|部分正确|错误)", resp, re.DOTALL)
+            if seg:
+                data[it["no"]] = {"judge": seg.group(1)}
+
+    def _find_item(no):
+        if isinstance(data, list):
+            for x in data:
+                if isinstance(x, dict) and x.get("no") == no:
+                    return x
+            return None
+        if isinstance(data, dict):
+            return data.get(no) or data.get(str(no))
+        return None
+
+    lines = []
+    for it in short_items:
+        item = _find_item(it["no"]) or {}
+        judge = str(item.get("judge", "错误"))
+        score = item.get("score")
+        comment = str(item.get("comment", ""))
+        wrong = judge in ("部分正确", "错误") or (isinstance(score, (int, float)) and score < 60)
+        if wrong:
+            wrong_nos.append(it["no"])
+        icon = "✅" if judge == "正确" else ("⚠️" if judge == "部分正确" else "❌")
+        score_txt = f"（{score}分）" if isinstance(score, (int, float)) else ""
+        lines.append(f"{icon} 第{it['no']}题{score_txt}：{judge}\n你的答案：{it.get('user', '')}\n📖 点评：{comment or '（无点评）'}")
+        if it.get("ref"):
+            lines.append(f"📖 参考答案：{str(it['ref'])[:200]}")
+    return "\n".join(lines), wrong_nos

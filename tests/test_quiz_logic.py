@@ -57,10 +57,27 @@ class QuizLogicTest(unittest.TestCase):
         self.assertEqual(r["wrong_nos"], [1, 3])
         self.assertEqual(r["correct"], 1)
 
-    def test_grade_empty_keys(self):
+    def test_grade_empty_keys_treats_all_as_short(self):
         r = grade_paper(self._paper(keys={}), "B,A,C")
+        self.assertTrue(r["ok"])
+        self.assertEqual(r["graded"], 0)
+        self.assertEqual(len(r["short_items"]), 3)
+        self.assertEqual(r["short_items"][0]["user"], "B")
+
+    def test_grade_mixed_choice_and_short(self):
+        paper = self._paper()
+        paper["q"] += "4. \u7b80\u7b54\u9898\n"
+        paper["a"] += "4. \u53c2\u8003\u7b54\u6848\uff1a\u89e3\u6790"
+        r = grade_paper(paper, "B,A,C,\u6211\u7684\u7406\u89e3")
+        self.assertTrue(r["ok"])
+        self.assertEqual(r["graded"], 3)
+        self.assertEqual(r["correct"], 3)
+        self.assertEqual(len(r["short_items"]), 1)
+        self.assertEqual(r["short_items"][0]["no"], 4)
+
+    def test_grade_nothing_submitted(self):
+        r = grade_paper(self._paper(), "")
         self.assertFalse(r["ok"])
-        self.assertIn("\u65e0\u6cd5\u81ea\u52a8\u6279\u6539", r["reply"])
 
 
 if __name__ == "__main__":

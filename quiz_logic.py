@@ -46,20 +46,16 @@ def parse_quiz_options(q_text: str) -> list:
 
 
 def grade_paper(paper: dict, raw_answers: str) -> dict:
-    """批改试卷（纯逻辑，不写错题本）。返回 {ok, reply, graded, correct, wrong_nos}"""
+    """批改试卷（纯逻辑，不写错题本）。
+    返回 {ok, reply, graded, correct, wrong_nos, short_items}
+    short_items: 需要AI批改的简答题 [{no, q, user, ref}, ...]
+    """
     keys = (paper or {}).get("keys") or {}
-    if not keys:
-        return {
-            "ok": False,
-            "reply": "⚠️这份试卷的答案格式不统一，无法自动批改。请用 /answer id 归档ID 查看答案自行核对",
-            "graded": 0,
-            "correct": 0,
-            "wrong_nos": [],
-        }
     raw = (raw_answers or "").strip()
     if not raw:
-        return {"ok": False, "reply": "请输入你的答案，例如：B,A,C,D", "graded": 0, "correct": 0, "wrong_nos": []}
+        return {"ok": False, "reply": "请输入你的答案，例如：B,A,C,D", "graded": 0, "correct": 0, "wrong_nos": [], "short_items": []}
     q_nos = [no for no, _ in split_numbered(paper.get("q") or "")]
+    q_map = {no: txt for no, txt in split_numbered(paper.get("q") or "")}
     a_map = {no: txt for no, txt in split_numbered(paper.get("a") or "")}
 
     # 格式1：1:B 2:A / 1.B / 第1题 B（按题号对应，顺序无关）
@@ -79,7 +75,21 @@ def grade_paper(paper: dict, raw_answers: str) -> dict:
                 t = tokens[i].strip()
                 answer_map[no] = "未作答" if (not t or t.upper() == "X") else t.upper()
         if not answer_map:
-            return {"ok": False, "reply": "没看懂你的答案格式，请用逗号分隔，例如：B,A,C,D", "graded": 0, "correct": 0, "wrong_nos": []}
+            return {"ok": False, "reply": "没看懂你的答案格式，请用逗号分隔，例如：B,A,C,D", "graded": 0, "correct": 0, "wrong_nos": [], "short_items": []}
+
+    # 简答题：不在选择题答案表中的题目，且学生已作答
+    short_items = []
+    for no in q_nos:
+        if no in keys:
+            continue
+        user_ans = answer_map.get(no, "未作答")
+        if user_ans and user_ans != "未作答":
+            short_items.append({
+                "no": no,
+                "q": q_map.get(no, ""),
+                "user": user_ans,
+                "ref": a_map.get(no, ""),
+            })
 
     lines = []
     correct = 0
@@ -102,16 +112,22 @@ def grade_paper(paper: dict, raw_answers: str) -> dict:
             exp_short = re.sub(r"^\s*\d{1,3}\s*[.、．]\s*", "", exp).strip()
             lines.append(f"   📖 {exp_short[:150]}")
     if graded == 0:
-        return {
-            "ok": False,
-            "reply": "这份试卷没有可自动批改的客观题（可能全是简答题），请用 /answer 查看答案",
-            "graded": 0,
-            "correct": 0,
-            "wrong_nos": [],
-        }
-    lines.append(f"\n🎯 客观题 {correct}/{graded} 正确")
-    if wrong_nos:
-        lines.append(f"📕 已自动将 {len(wrong_nos)} 道错题记入错题本")
+        if not short_items:
+            return {
+                "ok": False,
+                "reply": "没有可批改的内容：请确认已作答选择题或简答题",
+                "graded": 0,
+                "correct": 0,
+                "wrong_nos": [],
+                "short_items": [],
+            }
     else:
-        lines.append("🎉 全部正确，继续保持！")
-    return {"ok": True, "reply": "\n".join(lines), "graded": graded, "correct": correct, "wrong_nos": wrong_nos}
+        lines.append(f"\n🎯 客观题 {correct}/{graded} 正确")
+    return {
+        "ok": True,
+        "reply": "\n".join(lines),
+        "graded": graded,
+        "correct": correct,
+        "wrong_nos": wrong_nos,
+        "short_items": short_items,
+    }

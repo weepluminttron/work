@@ -249,7 +249,7 @@ def _parse_aid(parts):
 
 
 def _do_submit(aid: int, raw_answers: str):
-    """自动批改客观题（纯逻辑在 quiz_logic，这里负责错题本落库）"""
+    """自动批改：客观题逐题比对，简答题用AI评分，错题统一进错题本"""
     from wrong_book import add_wrong_paper
     paper = _web_papers.get(aid)
     if not paper:
@@ -257,12 +257,24 @@ def _do_submit(aid: int, raw_answers: str):
     result = grade_paper(paper, raw_answers)
     if not result["ok"]:
         return result["reply"]
-    reply = f"📝【归档ID {aid}】客观题批改结果\n{result['reply']}"
-    if result["wrong_nos"]:
-        add_wrong_paper(aid, paper["subject"], paper["q"], paper["a"], result["wrong_nos"])
+    from study_service import grade_short_answers_text
+    short_lines, short_wrong = grade_short_answers_text(result.get("short_items") or [])
+    wrong_nos = list(result.get("wrong_nos") or []) + short_wrong
+
+    if result["graded"] > 0:
+        reply = f"📝【归档ID {aid}】客观题批改结果\n{result['reply']}"
+    else:
+        reply = f"📝【归档ID {aid}】批改结果\n（本卷没有可自动比对的客观题，简答题已用AI批改）"
+    if short_lines:
+        reply += f"\n\n📝 简答题批改：\n{short_lines}"
+    if wrong_nos:
+        add_wrong_paper(aid, paper["subject"], paper["q"], paper["a"], wrong_nos)
+        reply += f"\n\n📕 已自动将 {len(wrong_nos)} 道错题记入错题本"
         return reply, [
             {"label": "📕 复习错题", "payload": {"step": "run", "cmd": f"/wrong id {aid}"}}
         ]
+    if result["graded"] > 0 or short_lines:
+        reply += "\n\n🎉 全部正确，继续保持！"
     return reply
 
 

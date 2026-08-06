@@ -45,6 +45,7 @@ os.chdir(_TMP)
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import review_scheduler
 from archive_db import init_db
+import study_service
 from study_service import delete_text, done_text, progress_text, report_text
 
 init_db()
@@ -85,6 +86,19 @@ class StudyServiceTest(unittest.TestCase):
 
     def test_delete_text_usage(self):
         self.assertIn("/del id", delete_text("/del \u4e71\u5199\u7684\u5185\u5bb9"))
+
+    def test_grade_short_answers_text(self):
+        def fake_llm(prompt, timeout=60):
+            return '[{"no":1,"judge":"\u6b63\u786e","score":90,"comment":"\u5f88\u597d"},{"no":2,"judge":"\u9519\u8bef","score":40,"comment":"\u6f0f\u4e86\u8981\u70b9"}]'
+        study_service.llm_request = fake_llm
+        items = [
+            {"no": 1, "q": "q1", "user": "\u597d\u7b54\u6848", "ref": "\u53c2\u8003\u7b54\u68481"},
+            {"no": 2, "q": "q2", "user": "\u5dee\u7b54\u6848", "ref": "\u53c2\u8003\u7b54\u68482"},
+        ]
+        text, wrong = study_service.grade_short_answers_text(items)
+        self.assertEqual(wrong, [2])
+        self.assertIn("\u2705", text)
+        self.assertIn("\u274c", text)
 
 
 if __name__ == "__main__":
