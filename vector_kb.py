@@ -4,9 +4,10 @@ import config
 import re
 import requests
 import threading
+import os
 
 # ===================== 路径：向量库存放至云硬盘/data =====================
-CHROMA_PATH = "/data/chroma_study_kb"
+CHROMA_PATH = os.getenv("CHROMA_PATH", "/data/chroma_study_kb")
 COLLECTION_NAME = "study_docs"
 # 相似度阈值，低于该值不纳入上下文
 SIM_THRESHOLD = 0.65

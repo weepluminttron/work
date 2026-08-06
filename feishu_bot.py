@@ -35,7 +35,7 @@ token_expire_time = 0
 TOKEN_LOCK = threading.Lock()
 
 # ==========试题持久缓存【/list_test /answer id】==========
-TEST_CACHE_FILE = "test_record_cache.json"
+TEST_CACHE_FILE = os.getenv("TEST_CACHE_FILE", "test_record_cache.json")
 TEST_CACHE_TTL = config.CACHE_EXPIRE_SECONDS
 user_last_paper = {}
 cache_lock = threading.Lock()
@@ -120,9 +120,15 @@ def list_all_user_test_records(open_id: str):
 processed_event = {}
 event_lock = threading.Lock()
 
-last_pdf_bytes = None
-last_pdf_name = ""
-pdf_cache_lock = threading.Lock()
+class PdfCacheState:
+    """最近上传文件的共享缓存（供 /save 手动归档使用）"""
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.last_pdf_bytes = None
+        self.last_pdf_name = ""
+
+
+pdf_state = PdfCacheState()
 
 # 全局线程池，严格限制并发
 executor = ThreadPoolExecutor(max_workers=config.MAX_WORKERS, thread_name_prefix="feishu_task")
@@ -452,11 +458,10 @@ def extract_old_doc_text(file_bytes: bytes) -> str:
         return ""
 
 # =====================【学习计划相关函数】=====================
-from llm_summary import extract_task_list, auto_extract_archive_info, ai_simplify_filename, format_msg, generate_study_plan, split_plan_to_daily_tasks
+from llm_summary import auto_extract_archive_info, ai_simplify_filename, format_msg
 
 # =====================【消息主逻辑】=====================
 def process_message_task(event_data):
-    global last_pdf_bytes, last_pdf_name
     receive_id = ""
     try:
         event = event_data.get("event", {})
@@ -474,320 +479,26 @@ def process_message_task(event_data):
             content = json.loads(message["content"])["text"].strip()
             print("收到指令：", content)
 
-            if content.startswith("/test"):
-                clean_expired_test_records()
-                parts = content.split(maxsplit=2)
-                archive_id = 0
-                if len(parts)>=3 and parts[1].lower()=="id":
-                    try:
-                        archive_id=int(parts[2])
-                    except ValueError:
-                        send_msg(receive_id, "用法：/test id 归档ID")
-                        return
-                    from archive_db import get_archive_by_id
-                    row = get_archive_by_id(archive_id)
-                    if not row:
-                        send_msg(receive_id, f"❌找不到归档ID {archive_id}")
-                        return
-                    subject = row["subject"]
-                    text_content = row["file_text"]
-                    send_msg(receive_id, f"📖加载归档ID:{archive_id}【{subject}】生成习题")
-                else:
-                    if len(parts)<3:
-                        send_msg(receive_id, """📝出题方式：
-1) /test 科目 文本
-2) /test id 归档ID
-/list_test 查看试题记录
-""")
-                        return
-                    subject = parts[1]
-                    text_content = parts[2]
-                from llm_summary import generate_test_questions
-                q,a = generate_test_questions(text_content, subject,10)
-                cq = format_msg(q)
-                ca = format_msg(a)
-                add_test_record(sender_open_id, archive_id, cq, ca)
-                send_long_msg(receive_id, f"{cq}\n💡发送 /answer 查看答案")
-
-            elif content.startswith("/answer"):
-                args = content.split(maxsplit=2)
-                target_aid = None
-                if len(args)>=3 and args[1].lower()=="id":
-                    try:
-                        target_aid=int(args[2])
-                    except ValueError:
-                        send_msg(receive_id, "格式：/answer id 归档ID")
-                        return
-                if target_aid is not None:
-                    rec = get_latest_by_archive_id(sender_open_id, target_aid)
-                else:
-                    rec = get_latest_all_record(sender_open_id)
-                if not rec:
-                    send_msg(receive_id, "暂无试题记录，请先执行/test")
-                    return
-                send_long_msg(receive_id, f"【参考答案】\n{rec['answer']}")
-
-            elif content == "/list_test":
-                records = list_all_user_test_records(sender_open_id)
-                if not records:
-                    send_msg(receive_id, "📋暂无试题记录")
-                    return
-                lines = ["📋试题清单（30分钟有效期）："]
-                for idx,r in enumerate(records,1):
-                    aid = r["archive_id"]
-                    desc = f"归档ID={aid}" if aid !=0 else "临时文本出题"
-                    lines.append(f"{idx}. {desc}")
-                lines.append("\n/answer id 数字 查询对应习题答案")
-                send_msg(receive_id, "\n".join(lines))
-
-            elif content.startswith("/plan id"):
-                parts = content.split()
-                aid = None
-                target_days = 5
-                try:
-                    aid = int(parts[2])
-                    if len(parts) >=5 and parts[3].lower() == "days":
-                        target_days = int(parts[4])
-                        target_days = max(2, min(14, target_days))
-                except Exception:
-                    send_msg(receive_id, "📖用法：\n/plan id 归档ID\n/plan id 归档ID days 7\n示例：/plan id 5 days 7")
-                    return
-                from archive_db import get_archive_by_id
-                row = get_archive_by_id(aid)
-                if not row:
-                    send_msg(receive_id, f"❌未找到归档ID={aid}")
-                    return
-                send_msg(receive_id, f"🤖正在生成【{target_days}天】学习方案，请稍候...")
-                full_plan_text = generate_study_plan(row["file_text"], row["subject"])
-                daily_task_text = split_plan_to_daily_tasks(full_plan_text, row["subject"], target_days)
-                output = f"""📅【{row['subject']}学习总方案】
-归档ID：{aid}
-文档名称：{row['filename']}
-周期：{target_days}天
-
-====整体规划====
-{full_plan_text}
-
-====📆每日细化任务清单====
-{daily_task_text}
-"""
-                send_long_msg(receive_id, output)
-
-            elif content.startswith("/daily id"):
-                parts = content.split()
-                aid = None
-                target_days = 5
-                try:
-                    aid = int(parts[2])
-                    if len(parts) >=5 and parts[3].lower() == "days":
-                        target_days = int(parts[4])
-                        target_days = max(2, min(14, target_days))
-                except Exception:
-                    send_msg(receive_id, """📖用法：
-/daily id 归档ID
-/daily id 归档ID days 6
-""")
-                    return
-                from archive_db import get_archive_by_id
-                row = get_archive_by_id(aid)
-                if not row:
-                    send_msg(receive_id, f"❌未找到归档ID={aid}")
-                    return
-                send_msg(receive_id, f"🤖正在拆分{target_days}天每日学习任务...")
-                full_plan_text = generate_study_plan(row["file_text"], row["subject"])
-                daily_task_text = split_plan_to_daily_tasks(full_plan_text, row["subject"], target_days)
-                task_list = extract_task_list(daily_task_text)
-
-                from review_scheduler import save_daily_tasks
-                save_daily_tasks(aid, row["subject"], task_list)
-
-                output = f"""📆【{row['subject']}每日学习任务】
-归档ID：{aid} ｜ {target_days}天周期
-{daily_task_text}
-💡打卡用法：/done id {aid} day 1 标记第1天完成
-📊进度查询：/progress id {aid}
-                """
-                send_long_msg(receive_id, output)
-
-            elif content.startswith("/cards id"):
-                parts = content.split()
-                try:
-                    aid = int(parts[2])
-                except Exception:
-                    send_msg(receive_id, "📝用法：/cards id 归档ID\n示例：/cards id 3")
-                    return
-                from archive_db import get_archive_by_id
-                row = get_archive_by_id(aid)
-                if not row:
-                    send_msg(receive_id, f"❌未找到归档ID={aid}")
-                    return
-                if not row["file_text"] or len(row["file_text"].strip()) < 20:
-                    send_msg(receive_id, "该归档文档没有可用的文本内容")
-                    return
-                send_msg(receive_id, f"🤖正在把归档ID:{aid}【{row['subject']}】提炼成知识点和背诵卡片，请稍候...")
-                from llm_summary import generate_memory_cards
-                try:
-                    cards = generate_memory_cards(row["file_text"], row["subject"])
-                except Exception as e:
-                    send_msg(receive_id, f"❌生成失败：{str(e)}")
-                    return
-                send_long_msg(receive_id, f"📚【{row['subject']}】知识点与背诵卡片\n{format_msg(cards)}")
-
-            elif content.startswith("/done id"):
-                parts = content.split()
-                try:
-                    aid = int(parts[2])
-                    day_num = int(parts[4])
-                except Exception:
-                    send_msg(receive_id, "📝用法：/done id 归档ID day 天数\n示例：/done id 6 day 2")
-                    return
-                from review_scheduler import mark_task_finished
-                ok = mark_task_finished(aid, day_num)
-                if ok:
-                    from review_scheduler import get_study_streak
-                    streak = get_study_streak()
-                    encourage = f"🔥 已连续打卡 {streak} 天！" if streak > 1 else "🎉 打卡成功，继续保持！"
-                    send_msg(receive_id, f"✅已标记归档ID:{aid} 第{day_num}天任务完成！{encourage}")
-                else:
-                    send_msg(receive_id, f"❌未找到对应任务，检查归档ID或天数是否正确")
-
-            elif content.startswith("/progress id"):
-                parts = content.split()
-                try:
-                    aid = int(parts[2])
-                except Exception:
-                    send_msg(receive_id, "📝用法：/progress id 归档ID")
-                    return
-                from review_scheduler import get_archive_progress
-                rows = get_archive_progress(aid)
-                if not rows:
-                    send_msg(receive_id, "⚠️暂无任务记录，请先执行 /daily id xxx 生成每日任务")
-                    return
-                total = len(rows)
-                finished = sum(1 for r in rows if r["finished"] == 1)
-                rate = f"{finished/total*100:.1f}%" if total>0 else "0%"
-                msg_lines = [f"📊学习进度 归档ID:{aid}\n总任务：{total}天 | 已完成：{finished} | 完成率：{rate}\n"]
-                for r in rows:
-                    status = "✅已完成" if r["finished"] else "⏳待完成"
-                    complete_day = r["complete_date"] if r["complete_date"] else "未打卡"
-                    msg_lines.append(f"Day{r['day_no']} {status} | {complete_day}")
-                send_long_msg(receive_id, "\n".join(msg_lines))
-
-            elif content.startswith("/report"):
-                from review_scheduler import get_study_report
-                send_long_msg(receive_id, get_study_report())
-
-            elif content.startswith("/save"):
-                parts = content.split(maxsplit=2)
-                if len(parts)<3:
-                    send_msg(receive_id, "/save 科目 知识点")
-                    return
-                subject = parts[1]
-                kname = parts[2]
-                clean_name = ai_simplify_filename(kname, subject)
-                with pdf_cache_lock:
-                    if not last_pdf_bytes:
-                        send_msg(receive_id, "⚠️先上传文件再执行/save")
-                        return
-                    from archive_db import archive_file
-                    # =========修复参数顺序 + 接收元组返回值==========
-                    save_path, new_id = archive_file(subject, clean_name, last_pdf_bytes, last_pdf_name, "")
-                    send_msg(receive_id,f"✅归档成功！ID={new_id}")
-
-            elif content.startswith("/del"):
-                body = content.removeprefix("/del").strip()
-                parts = body.split(maxsplit=2)
-                if len(parts)>=2 and parts[0].lower()=="id":
-                    try:
-                        target_id=int(parts[1])
-                        from archive_db import delete_archive_by_id
-                        deleted_name = delete_archive_by_id(target_id)
-                        if not deleted_name:
-                            send_msg(receive_id,"找不到该归档ID")
-                            return
-                        remove_archive_from_kb(target_id)
-                        send_msg(receive_id,f"✅删除归档ID:{target_id} {deleted_name}")
-                    except ValueError:
-                        send_msg(receive_id,"用法 /del id 数字")
-                    return
-                if "|" not in body:
-                    send_msg(receive_id,"/del id 数字 推荐使用")
-                    return
-                subj,fname = [x.strip() for x in body.split("|",maxsplit=1)]
-                from archive_db import delete_archive_file
-                res = delete_archive_file(subj,"",fname)
-                send_msg(receive_id, res)
-
-            elif content.startswith("/polish") or content.startswith("/改写"):
-                body = content.removeprefix("/polish").removeprefix("/改写").strip()
-                if not body:
-                    send_msg(receive_id, """📝用法：
-/polish 德语 你的文本
-/polish 英语 你的文本
-/polish 你的文本（自动识别语言）
-/polish id 归档ID（润色归档文档）
-可以在文本前附上修改要求，例如：
-/polish 德语 改得更口语化一点：原文内容
-""")
-                    return
-                first, _, rest = body.partition(" ")
-                if first == "id":
-                    try:
-                        aid = int(rest.strip())
-                    except ValueError:
-                        send_msg(receive_id, "用法：/polish id 归档ID")
-                        return
-                    from archive_db import get_archive_by_id
-                    row = get_archive_by_id(aid)
-                    if not row:
-                        send_msg(receive_id, f"❌找不到归档ID {aid}")
-                        return
-                    lang = ""
-                    text = row["file_text"]
-                    if not text or len(text.strip()) < 20:
-                        send_msg(receive_id, "该归档文档没有可用的文本内容")
-                        return
-                elif first in ("德语", "德", "de", "英语", "英", "en"):
-                    lang = first
-                    text = rest.strip()
-                else:
-                    lang = ""
-                    text = body
-                if not text:
-                    send_msg(receive_id, "请把需要修改的文本一起发给我")
-                    return
-                send_msg(receive_id, "🔄正在润色，请稍候...")
-                from llm_summary import polish_text
-                try:
-                    result = polish_text(text, lang)
-                except Exception as e:
-                    send_msg(receive_id, f"❌润色失败：{str(e)}")
-                    return
-                send_long_msg(receive_id, f"✍️润色结果：\n{result}")
-
-            elif content == "/rebuild_kb":
-                send_msg(receive_id, "🔄开始重建全部向量知识库，耗时较长，请耐心等待...")
-                try:
-                    rebuild_kb()
-                    send_msg(receive_id, "✅知识库重建完成！所有归档文档已载入向量库")
-                except Exception as e:
-                    import traceback
-                    traceback.print_exc()
-                    send_msg(receive_id, f"❌重建知识库失败：{str(e)}")
-
-            elif content == "/tip":
-                send_interactive_card(receive_id, build_menu_card())
-
-            else:
-                send_msg(receive_id, "🤖正在检索本地归档资料，请稍候...")
-                try:
-                    reply = rag_answer(content)
-                    send_long_msg(receive_id, reply)
-                except Exception as e:
-                    import traceback
-                    traceback.print_exc()
-                    send_msg(receive_id, f"问答服务出错：{str(e)}")
-
+            from feishu_commands import CommandContext, dispatch_text_command
+            ctx = CommandContext(
+                receive_id=receive_id,
+                content=content,
+                send_msg=send_msg,
+                send_long_msg=send_long_msg,
+                pdf_state=pdf_state,
+                fns={
+                    "clean_expired_test_records": clean_expired_test_records,
+                    "add_test_record": add_test_record,
+                    "get_latest_by_archive_id": get_latest_by_archive_id,
+                    "get_latest_all_record": get_latest_all_record,
+                    "list_all_user_test_records": list_all_user_test_records,
+                    "rebuild_kb": rebuild_kb,
+                    "remove_archive_from_kb": remove_archive_from_kb,
+                    "build_menu_card": build_menu_card,
+                    "send_interactive_card": send_interactive_card,
+                },
+            )
+            dispatch_text_command(ctx)
         elif msg_type == "file":
             print("【消息调试】检测到文件消息，准备解析")
             try:
@@ -819,9 +530,9 @@ def process_message_task(event_data):
                 if len(doc_text.strip())<20:
                     send_msg(receive_id, "文档文字过少，无法处理")
                     return
-                with pdf_cache_lock:
-                    last_pdf_bytes = file_bytes
-                    last_pdf_name = file_name
+                with pdf_state.lock:
+                    pdf_state.last_pdf_bytes = file_bytes
+                    pdf_state.last_pdf_name = file_name
                 doc_text = doc_text[:config.MAX_LLM_CONTEXT]
                 auto_info = auto_extract_archive_info(doc_text)
                 subj = auto_info["subject"]

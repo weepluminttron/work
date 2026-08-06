@@ -53,8 +53,8 @@ TG_BOT_TOKEN = "你的TG机器人token"
 TG_USER_ID = 123456789
 
 # ===================== FSRS间隔重复复习系统 =====================
-REVIEW_PUSH_HOUR = 8             # 每日早上8点推送复习计划
-MEMORY_DB_PATH = "memory_spaced_review.db"
+REVIEW_PUSH_HOUR = int(os.getenv("REVIEW_PUSH_HOUR", "8"))  # 每日早上8点推送复习计划
+MEMORY_DB_PATH = os.getenv("MEMORY_DB_PATH", "memory_spaced_review.db")
 
 # ===================== 飞书机器人主交互渠道【已修复变量名】 =====================
 FEISHU_APP_ID = os.getenv("FEISHU_APP_ID", "")
@@ -69,9 +69,9 @@ CACHE_EXPIRE_SECONDS = 30 * 60    # 试题缓存30分钟过期
 CLEAN_INTERVAL = 10 * 60          # 每10分钟清理一次缓存
 MAX_WORKERS = 4                   # 线程池最大并发
 
-# ===================== PDF归档存储配置 =====================
-BASE_DOC_DIR = "./study_docs"
-ARCHIVE_DB_PATH = "archive.db"
+# ===================== PDF归档存储配置（支持 Docker 环境变量覆盖） =====================
+BASE_DOC_DIR = os.getenv("STUDY_DOCS_DIR", "./study_docs")
+ARCHIVE_DB_PATH = os.getenv("ARCHIVE_DB_PATH", "archive.db")
 os.makedirs(BASE_DOC_DIR, exist_ok=True)
 
 # ===================== RAG本地知识库 + 联网搜索 =====================

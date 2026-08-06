@@ -5,7 +5,7 @@ import os
 import threading
 import time
 
-QUIZ_RECORD_FILE = "quiz_records.json"
+QUIZ_RECORD_FILE = os.getenv("QUIZ_RECORD_FILE", "quiz_records.json")
 _lock = threading.Lock()
 
 

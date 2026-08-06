@@ -1,16 +1,10 @@
 # -*- coding: utf-8 -*-
 """飞书文本指令处理器：命令注册表，替代 feishu_bot 里的巨型 if/elif 链"""
 from llm_summary import (
-    extract_task_list,
     ai_simplify_filename,
-    format_msg,
-    generate_study_plan,
-    split_plan_to_daily_tasks,
     generate_test_questions,
-    generate_memory_cards,
-    polish_text,
 )
-from archive_db import get_archive_by_id, archive_file, delete_archive_by_id, delete_archive_file
+from archive_db import get_archive_by_id, archive_file
 
 
 class CommandContext:
@@ -115,25 +109,9 @@ def handle_plan(ctx):
     if aid is None:
         ctx.send_msg(ctx.receive_id, "📖用法：\n/plan id 归档ID\n/plan id 归档ID days 7\n示例：/plan id 5 days 7")
         return
-    row = get_archive_by_id(aid)
-    if not row:
-        ctx.send_msg(ctx.receive_id, f"❌未找到归档ID={aid}")
-        return
     ctx.send_msg(ctx.receive_id, f"🤖正在生成【{target_days}天】学习方案，请稍候...")
-    full_plan_text = generate_study_plan(row["file_text"], row["subject"])
-    daily_task_text = split_plan_to_daily_tasks(full_plan_text, row["subject"], target_days)
-    output = f"""📅【{row['subject']}学习总方案】
-归档ID：{aid}
-文档名称：{row['filename']}
-周期：{target_days}天
-
-====整体规划====
-{full_plan_text}
-
-====📆每日细化任务清单====
-{daily_task_text}
-"""
-    ctx.send_long_msg(ctx.receive_id, output)
+    from study_service import plan_text
+    ctx.send_long_msg(ctx.receive_id, plan_text(aid, target_days, include_daily=True))
 
 
 def handle_daily(ctx):
@@ -141,25 +119,9 @@ def handle_daily(ctx):
     if aid is None:
         ctx.send_msg(ctx.receive_id, "📖用法：\n/daily id 归档ID\n/daily id 归档ID days 6\n")
         return
-    row = get_archive_by_id(aid)
-    if not row:
-        ctx.send_msg(ctx.receive_id, f"❌未找到归档ID={aid}")
-        return
     ctx.send_msg(ctx.receive_id, f"🤖正在拆分{target_days}天每日学习任务...")
-    full_plan_text = generate_study_plan(row["file_text"], row["subject"])
-    daily_task_text = split_plan_to_daily_tasks(full_plan_text, row["subject"], target_days)
-    task_list = extract_task_list(daily_task_text)
-
-    from review_scheduler import save_daily_tasks
-    save_daily_tasks(aid, row["subject"], task_list)
-
-    output = f"""📆【{row['subject']}每日学习任务】
-归档ID：{aid} ｜ {target_days}天周期
-{daily_task_text}
-💡打卡用法：/done id {aid} day 1 标记第1天完成
-📊进度查询：/progress id {aid}
-                """
-    ctx.send_long_msg(ctx.receive_id, output)
+    from study_service import daily_text
+    ctx.send_long_msg(ctx.receive_id, daily_text(aid, target_days))
 
 
 def handle_cards(ctx):
@@ -169,20 +131,14 @@ def handle_cards(ctx):
     except Exception:
         ctx.send_msg(ctx.receive_id, "📝用法：/cards id 归档ID\n示例：/cards id 3")
         return
-    row = get_archive_by_id(aid)
-    if not row:
-        ctx.send_msg(ctx.receive_id, f"❌未找到归档ID={aid}")
-        return
-    if not row["file_text"] or len(row["file_text"].strip()) < 20:
-        ctx.send_msg(ctx.receive_id, "该归档文档没有可用的文本内容")
-        return
-    ctx.send_msg(ctx.receive_id, f"🤖正在把归档ID:{aid}【{row['subject']}】提炼成知识点和背诵卡片，请稍候...")
+    ctx.send_msg(ctx.receive_id, f"🤖正在把归档ID:{aid} 提炼成知识点和背诵卡片，请稍候...")
     try:
-        cards = generate_memory_cards(row["file_text"], row["subject"])
+        from study_service import cards_text
+        result = cards_text(aid)
     except Exception as e:
         ctx.send_msg(ctx.receive_id, f"❌生成失败：{str(e)}")
         return
-    ctx.send_long_msg(ctx.receive_id, f"📚【{row['subject']}】知识点与背诵卡片\n{format_msg(cards)}")
+    ctx.send_long_msg(ctx.receive_id, result)
 
 
 def handle_done(ctx):
@@ -193,14 +149,8 @@ def handle_done(ctx):
     except Exception:
         ctx.send_msg(ctx.receive_id, "📝用法：/done id 归档ID day 天数\n示例：/done id 6 day 2")
         return
-    from review_scheduler import mark_task_finished, get_study_streak
-    ok = mark_task_finished(aid, day_num)
-    if ok:
-        streak = get_study_streak()
-        encourage = f"🔥 已连续打卡 {streak} 天！" if streak > 1 else "🎉 打卡成功，继续保持！"
-        ctx.send_msg(ctx.receive_id, f"✅已标记归档ID:{aid} 第{day_num}天任务完成！{encourage}")
-    else:
-        ctx.send_msg(ctx.receive_id, "❌未找到对应任务，检查归档ID或天数是否正确")
+    from study_service import done_text
+    ctx.send_msg(ctx.receive_id, done_text(aid, day_num))
 
 
 def handle_progress(ctx):
@@ -210,25 +160,13 @@ def handle_progress(ctx):
     except Exception:
         ctx.send_msg(ctx.receive_id, "📝用法：/progress id 归档ID")
         return
-    from review_scheduler import get_archive_progress
-    rows = get_archive_progress(aid)
-    if not rows:
-        ctx.send_msg(ctx.receive_id, "⚠️暂无任务记录，请先执行 /daily id xxx 生成每日任务")
-        return
-    total = len(rows)
-    finished = sum(1 for r in rows if r["finished"] == 1)
-    rate = f"{finished / total * 100:.1f}%" if total > 0 else "0%"
-    msg_lines = [f"📊学习进度 归档ID:{aid}\n总任务：{total}天 | 已完成：{finished} | 完成率：{rate}\n"]
-    for r in rows:
-        status = "✅已完成" if r["finished"] else "⏳待完成"
-        complete_day = r["complete_date"] if r["complete_date"] else "未打卡"
-        msg_lines.append(f"Day{r['day_no']} {status} | {complete_day}")
-    ctx.send_long_msg(ctx.receive_id, "\n".join(msg_lines))
+    from study_service import progress_text
+    ctx.send_long_msg(ctx.receive_id, progress_text(aid))
 
 
 def handle_report(ctx):
-    from review_scheduler import get_study_report
-    ctx.send_long_msg(ctx.receive_id, get_study_report())
+    from study_service import report_text
+    ctx.send_long_msg(ctx.receive_id, report_text())
 
 
 def handle_save(ctx):
@@ -248,81 +186,25 @@ def handle_save(ctx):
 
 
 def handle_del(ctx):
-    body = ctx.content.removeprefix("/del").strip()
-    parts = body.split(maxsplit=2)
-    if len(parts) >= 2 and parts[0].lower() == "id":
-        try:
-            target_id = int(parts[1])
-            deleted_name = delete_archive_by_id(target_id)
-            if not deleted_name:
-                ctx.send_msg(ctx.receive_id, "找不到该归档ID")
-                return
-            remove_kb = ctx.fn("remove_archive_from_kb")
-            if remove_kb:
-                remove_kb(target_id)
-            ctx.send_msg(ctx.receive_id, f"✅删除归档ID:{target_id} {deleted_name}")
-        except ValueError:
-            ctx.send_msg(ctx.receive_id, "用法 /del id 数字")
-        return
-    if "|" not in body:
-        ctx.send_msg(ctx.receive_id, "/del id 数字 推荐使用")
-        return
-    subj, fname = [x.strip() for x in body.split("|", maxsplit=1)]
-    res = delete_archive_file(subj, "", fname)
-    ctx.send_msg(ctx.receive_id, res)
+    from study_service import delete_text
+    ctx.send_msg(ctx.receive_id, delete_text(ctx.content))
 
 
 def handle_polish(ctx):
-    body = ctx.content.removeprefix("/polish").removeprefix("/改写").strip()
-    if not body:
-        ctx.send_msg(ctx.receive_id, "📝用法：\n/polish 德语 你的文本\n/polish 英语 你的文本\n/polish 你的文本（自动识别语言）\n/polish id 归档ID（润色归档文档）\n可以在文本前附上修改要求，例如：\n/polish 德语 改得更口语化一点：原文内容\n")
-        return
-    first, _, rest = body.partition(" ")
-    if first == "id":
-        try:
-            aid = int(rest.strip())
-        except ValueError:
-            ctx.send_msg(ctx.receive_id, "用法：/polish id 归档ID")
-            return
-        row = get_archive_by_id(aid)
-        if not row:
-            ctx.send_msg(ctx.receive_id, f"❌找不到归档ID {aid}")
-            return
-        lang = ""
-        text = row["file_text"]
-        if not text or len(text.strip()) < 20:
-            ctx.send_msg(ctx.receive_id, "该归档文档没有可用的文本内容")
-            return
-    elif first in ("德语", "德", "de", "英语", "英", "en"):
-        lang = first
-        text = rest.strip()
-    else:
-        lang = ""
-        text = body
-    if not text:
-        ctx.send_msg(ctx.receive_id, "请把需要修改的文本一起发给我")
-        return
     ctx.send_msg(ctx.receive_id, "🔄正在润色，请稍候...")
     try:
-        result = polish_text(text, lang)
+        from study_service import polish_cmd_text
+        result = polish_cmd_text(ctx.content)
     except Exception as e:
         ctx.send_msg(ctx.receive_id, f"❌润色失败：{str(e)}")
         return
-    ctx.send_long_msg(ctx.receive_id, f"✍️润色结果：\n{result}")
+    ctx.send_long_msg(ctx.receive_id, result)
 
 
 def handle_rebuild_kb(ctx):
     ctx.send_msg(ctx.receive_id, "🔄开始重建全部向量知识库，耗时较长，请耐心等待...")
-    try:
-        rebuild = ctx.fn("rebuild_kb")
-        if not rebuild:
-            from vector_kb import rebuild_kb as rebuild
-        rebuild()
-        ctx.send_msg(ctx.receive_id, "✅知识库重建完成！所有归档文档已载入向量库")
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        ctx.send_msg(ctx.receive_id, f"❌重建知识库失败：{str(e)}")
+    from study_service import rebuild_text
+    ctx.send_msg(ctx.receive_id, rebuild_text())
 
 
 def handle_tip(ctx):

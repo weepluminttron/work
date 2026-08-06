@@ -6,7 +6,7 @@ import re
 import threading
 import time
 
-WRONG_BOOK_FILE = "wrong_book.json"
+WRONG_BOOK_FILE = os.getenv("WRONG_BOOK_FILE", "wrong_book.json")
 _lock = threading.Lock()
 
 

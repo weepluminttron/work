@@ -6,6 +6,9 @@ import threading
 import uuid
 import time
 from flask import Flask, request, jsonify, session, send_file
+from quiz_logic import extract_answer_keys as _extract_answer_keys
+from quiz_logic import parse_quiz_options as _parse_quiz_options
+from quiz_logic import grade_paper
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 WEB_DIR = os.path.join(BASE_DIR, "web")
@@ -245,102 +248,22 @@ def _parse_aid(parts):
     return None
 
 
-def _extract_answer_keys(answer_text: str) -> dict:
-    """从答案文本中提取选择题正确答案：{题号: 选项字母}"""
-    import re
-    text = answer_text or ""
-    keys = {}
-    # 按编号切段：支持 1. / 1、 / 1． / 1: / 1： / **1.** / 【1】
-    sec_pat = re.compile(r"(?m)^\s*(?:\*\*)?\s*\[?(\d{1,3})\]?\s*[.、．:：]\s*(.*)$")
-    sections = [(int(m.group(1)), m.group(2)) for m in sec_pat.finditer(text)]
-    if not sections:
-        # 全文宽松匹配：第1题 正确答案 B / 1 答案：B 等
-        loose = re.compile(r"(?:第\s*|[【\[])?\s*(\d{1,3})\s*(?:题|[】\]])?\s*[.、．:：]?\s*(?:正确答案|答案|答案为|选|选择)\s*[是为：:]?\s*\*{0,2}([A-Da-d])")
-        for m in loose.finditer(text):
-            keys.setdefault(int(m.group(1)), m.group(2).upper())
-        return keys
-    for no, sec in sections:
-        s = sec.replace("*", "").strip()
-        m = re.search(r"(?:正确答案|答案|答案为|选|选择)\s*[是为：:]?\s*([A-Da-d])", s)
-        if m:
-            keys.setdefault(no, m.group(1).upper())
-            continue
-        m = re.match(r"([A-Da-d])\s*[.、．:：)）。]\s*", s)
-        if m:
-            keys.setdefault(no, m.group(1).upper())
-            continue
-        m = re.search(r"[（(]\s*([A-Da-d])\s*[）)]", s)
-        if m:
-            keys.setdefault(no, m.group(1).upper())
-    return keys
-
-
 def _do_submit(aid: int, raw_answers: str):
-    """自动批改客观题：支持 B,A,C,D / B A C D / BACD / 1:B 2:A / 第1题 B 等格式"""
-    import re
-    from wrong_book import add_wrong_paper, split_numbered
+    """自动批改客观题（纯逻辑在 quiz_logic，这里负责错题本落库）"""
+    from wrong_book import add_wrong_paper
     paper = _web_papers.get(aid)
     if not paper:
         return "请先通过「自测题」生成该归档的题目，再提交答案"
-    keys = paper.get("keys") or {}
-    if not keys:
-        return "⚠️这份试卷的答案格式不统一，无法自动批改。请用 /answer id 归档ID 查看答案自行核对"
-    raw = (raw_answers or "").strip()
-    if not raw:
-        return "请输入你的答案，例如：B,A,C,D"
-    q_nos = [no for no, _ in split_numbered(paper["q"])]
-    a_map = {no: txt for no, txt in split_numbered(paper["a"])}
-
-    # 格式1：1:B 2:A / 1.B / 第1题 B（按题号对应，顺序无关）
-    pair_map = {}
-    for m in re.finditer(r"(?:第)?\s*(\d{1,3})\s*[题\.、．:：]?\s*([A-Da-d])", raw):
-        pair_map.setdefault(int(m.group(1)), m.group(2).upper())
-    if len(pair_map) >= 2:
-        answer_map = pair_map
-    else:
-        # 格式2：顺序答案 B,A,C,D / B A C D / BACD
-        tokens = re.split(r"[,，\s、;；]+", raw)
-        if len(tokens) == 1 and len(tokens[0]) > 1 and all(ch.upper() in "ABCD" for ch in tokens[0]):
-            tokens = list(tokens[0])
-        answer_map = {}
-        for i, no in enumerate(q_nos):
-            if i < len(tokens):
-                t = tokens[i].strip()
-                answer_map[no] = "未作答" if (not t or t.upper() == "X") else t.upper()
-        if not answer_map:
-            return "没看懂你的答案格式，请用逗号分隔，例如：B,A,C,D"
-
-    lines = [f"📝【归档ID {aid}】客观题批改结果"]
-    correct = 0
-    graded = 0
-    wrong_nos = []
-    for no in q_nos:
-        if no not in keys:
-            continue
-        correct_key = keys[no]
-        user_key = answer_map.get(no, "未作答")
-        graded += 1
-        if user_key == correct_key:
-            correct += 1
-            lines.append(f"✅ 第{no}题：你的答案 {user_key} 正确")
-        else:
-            wrong_nos.append(no)
-            lines.append(f"❌ 第{no}题：你的答案 {user_key}，正确答案 {correct_key}")
-        exp = a_map.get(no, "")
-        if exp:
-            exp_short = re.sub(r"^\s*\d{1,3}\s*[.、．]\s*", "", exp).strip()
-            lines.append(f"   📖 {exp_short[:150]}")
-    if graded == 0:
-        return "这份试卷没有可自动批改的客观题（可能全是简答题），请用 /answer 查看答案"
-    lines.append(f"\n🎯 客观题 {correct}/{graded} 正确")
-    if wrong_nos:
-        add_wrong_paper(aid, paper["subject"], paper["q"], paper["a"], wrong_nos)
-        lines.append(f"📕 已自动将 {len(wrong_nos)} 道错题记入错题本")
-        return "\n".join(lines), [
+    result = grade_paper(paper, raw_answers)
+    if not result["ok"]:
+        return result["reply"]
+    reply = f"📝【归档ID {aid}】客观题批改结果\n{result['reply']}"
+    if result["wrong_nos"]:
+        add_wrong_paper(aid, paper["subject"], paper["q"], paper["a"], result["wrong_nos"])
+        return reply, [
             {"label": "📕 复习错题", "payload": {"step": "run", "cmd": f"/wrong id {aid}"}}
         ]
-    lines.append("🎉 全部正确，继续保持！")
-    return "\n".join(lines)
+    return reply
 
 
 def _explain_question(aid: int, qno: int) -> str:
@@ -518,13 +441,8 @@ def handle_web_command(text: str) -> str:
         aid = _parse_aid(parts)
         if aid is None:
             return "用法：/cards id 归档ID"
-        row = _get_archive(aid)
-        if not row:
-            return f"❌未找到归档ID {aid}"
-        if not row.get("file_text") or len(row["file_text"].strip()) < 20:
-            return "该归档文档没有可用的文本内容"
-        from llm_summary import generate_memory_cards
-        return generate_memory_cards(row["file_text"], row["subject"])
+        from study_service import cards_text
+        return cards_text(aid)
 
     if cmd == "/test":
         aid = _parse_aid(parts)
@@ -593,26 +511,19 @@ def handle_web_command(text: str) -> str:
         aid = _parse_aid(parts)
         if aid is None:
             return "用法：/plan id 归档ID [days 7]"
-        row = _get_archive(aid)
-        if not row:
-            return f"❌未找到归档ID {aid}"
         days = 5
         if len(parts) >= 5 and parts[3].lower() == "days":
             try:
                 days = max(2, min(14, int(parts[4])))
             except ValueError:
                 pass
-        from llm_summary import generate_study_plan
-        plan = generate_study_plan(row["file_text"], row["subject"])
-        return f"📅【{row['subject']}】学习计划（周期约 {days} 天）\n\n{plan}\n\n💡需要每日任务请用 /daily id {aid} days {days}"
+        from study_service import plan_text
+        return plan_text(aid, days, include_daily=False)
 
     if cmd == "/daily":
         aid = _parse_aid(parts)
         if aid is None:
             return "用法：/daily id 归档ID [days 5] [每天60分钟]"
-        row = _get_archive(aid)
-        if not row:
-            return f"❌未找到归档ID {aid}"
         days = 5
         if len(parts) >= 5 and parts[3].lower() == "days":
             try:
@@ -626,14 +537,8 @@ def handle_web_command(text: str) -> str:
                 nums = _re.findall(r"\d+", tok)
                 if nums:
                     daily_minutes = max(15, min(240, int(nums[0])))
-        from llm_summary import generate_study_plan, split_plan_to_daily_tasks, extract_task_list
-        from review_scheduler import save_daily_tasks
-        plan = generate_study_plan(row["file_text"], row["subject"])
-        daily_text = split_plan_to_daily_tasks(plan, row["subject"], days, daily_minutes)
-        task_list = extract_task_list(daily_text)
-        save_daily_tasks(aid, row["subject"], task_list)
-        time_note = f"，每天约 {daily_minutes} 分钟" if daily_minutes else ""
-        return f"📆【{row['subject']}】每日学习任务（{days}天{time_note}）\n\n{daily_text}\n\n💡完成后用 /done id {aid} day 天数 打卡"
+        from study_service import daily_text
+        return daily_text(aid, days, daily_minutes)
 
     if cmd == "/done":
         try:
@@ -645,18 +550,12 @@ def handle_web_command(text: str) -> str:
                 day_num = int(parts[2])
         except (ValueError, IndexError):
             return "用法：/done id 归档ID day 天数"
-        from review_scheduler import mark_task_finished
-        ok = mark_task_finished(aid, day_num)
-        if not ok:
-            return "❌未找到对应任务"
-        from review_scheduler import get_study_streak
-        streak = get_study_streak()
-        encourage = f"🔥 已连续打卡 {streak} 天！" if streak > 1 else "🎉 打卡成功，继续保持！"
-        return f"✅已标记归档ID:{aid} 第{day_num}天任务完成！{encourage}"
+        from study_service import done_text
+        return done_text(aid, day_num)
 
     if cmd == "/report":
-        from review_scheduler import get_study_report
-        return get_study_report()
+        from study_service import report_text
+        return report_text()
 
     if cmd == "/wrong":
         from wrong_book import add_wrong_paper, clear_wrong, get_wrong, list_wrong
@@ -708,55 +607,16 @@ def handle_web_command(text: str) -> str:
         aid = _parse_aid(parts)
         if aid is None:
             return "用法：/progress id 归档ID"
-        from review_scheduler import get_archive_progress
-        rows = get_archive_progress(aid)
-        if not rows:
-            return "⚠️暂无任务记录，请先执行 /daily id 归档ID 生成每日任务"
-        total = len(rows)
-        finished = sum(1 for r in rows if r["finished"] == 1)
-        rate = f"{finished/total*100:.1f}%" if total else "0%"
-        lines = [f"📊学习进度 归档ID:{aid}\n总任务：{total}天 | 已完成：{finished} | 完成率：{rate}\n"]
-        for r in rows:
-            status = "✅已完成" if r["finished"] else "⏳待完成"
-            lines.append(f"Day{r['day_no']} {status} | {r['complete_date'] or '未打卡'}")
-        return "\n".join(lines)
+        from study_service import progress_text
+        return progress_text(aid)
 
     if cmd == "/del":
-        aid = _parse_aid(parts)
-        if aid is None:
-            return "用法：/del id 归档ID"
-        from archive_db import delete_archive_by_id
-        from vector_kb import remove_archive_from_kb
-        deleted = delete_archive_by_id(aid)
-        if not deleted:
-            return f"❌找不到归档ID {aid}"
-        remove_archive_from_kb(aid)
-        return f"✅已删除归档ID:{aid}（{deleted}），知识库已同步清理"
+        from study_service import delete_text
+        return delete_text(text)
 
     if cmd == "/polish":
-        body = text[len(cmd):].strip()
-        if not body:
-            return "用法：/polish 德语 文本 或 /polish id 归档ID"
-        first, _, rest = body.partition(" ")
-        lang = ""
-        if first.lower() in ("德语", "德", "de", "英语", "英", "en"):
-            lang = first
-            content = rest.strip()
-        elif first.lower() == "id":
-            try:
-                aid = int(rest.strip())
-            except ValueError:
-                return "用法：/polish id 归档ID"
-            row = _get_archive(aid)
-            if not row:
-                return f"❌未找到归档ID {aid}"
-            content = row["file_text"]
-        else:
-            content = body
-        if not content:
-            return "请把需要修改的文本发给我"
-        from llm_summary import polish_text
-        return f"✍️润色结果：\n{polish_text(content, lang)}"
+        from study_service import polish_cmd_text
+        return polish_cmd_text(text)
 
     if cmd == "/merge":
         subject = text[len(cmd):].strip()
@@ -790,9 +650,8 @@ def handle_web_command(text: str) -> str:
         return "该合并归档包含以下原文档：\n" + "\n".join(f"{i}. {name}" for i, name in enumerate(origins, 1))
 
     if cmd == "/rebuild":
-        from vector_kb import rebuild_kb
-        rebuild_kb()
-        return "✅知识库重建完成！所有归档文档已载入向量库"
+        from study_service import rebuild_text
+        return rebuild_text()
 
     return "未知指令，发送 /help 查看可用指令"
 
@@ -938,15 +797,6 @@ def options():
         return jsonify({"ok": True, "prompt": "", "options": [], "run": cmd})
 
     return jsonify({"ok": False, "error": "无效操作"})
-
-
-def _parse_quiz_options(q_text: str) -> list:
-    """从题目文本中提取 A/B/C/D 选项"""
-    import re
-    options = []
-    for m in re.finditer(r"(?m)^\s*(?:\*\*)?\s*([A-Da-d])\s*[.、．)）]\s*(.*)$", q_text):
-        options.append({"key": m.group(1).upper(), "text": m.group(2).strip().rstrip("*").strip()})
-    return options
 
 
 @app.route("/api/quiz", methods=["GET"])
