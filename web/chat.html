@@ -106,6 +106,34 @@
   .theme-item.active { outline: 2px solid var(--primary); }
   .theme-swatch { display: flex; gap: 3px; }
   .theme-swatch i { width: 16px; height: 16px; border-radius: 50%; display: inline-block; }
+
+  /* ===== Coze 风格布局 ===== */
+  .layout { display: flex; height: 100vh; min-height: 0; }
+  .sidebar { display: none; width: 220px; background: var(--card); border-right: 1px solid var(--border); flex-direction: column; }
+  .sidebar-head { display: flex; align-items: center; gap: 8px; padding: 16px 16px 12px; font-size: 16px; font-weight: 700; color: var(--text); }
+  .sidebar-head .logo { width: 30px; height: 30px; border-radius: 9px; background: linear-gradient(135deg, var(--primary), var(--primary-2)); display: inline-flex; align-items: center; justify-content: center; font-size: 15px; }
+  .sidebar-nav { flex: 1; padding: 6px 10px; display: flex; flex-direction: column; gap: 4px; overflow-y: auto; }
+  .sidebar-nav .wbtn { text-align: left; padding: 10px 12px; border: none; background: transparent; color: var(--text); font-size: 14px; border-radius: 10px; cursor: pointer; border-right: none; transition: background .15s; }
+  .sidebar-nav .wbtn.active { background: var(--primary-soft); color: var(--primary); font-weight: 600; }
+  .sidebar-foot { padding: 14px 16px; font-size: 12px; color: var(--text-3); border-top: 1px solid var(--border); }
+  .main-col { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  header { background: var(--card); color: var(--text); border-bottom: 1px solid var(--border); box-shadow: none; padding: 12px 18px; }
+  #logout, #themeBtn { background: var(--primary-soft); color: var(--primary); }
+  main { max-width: 860px; width: 100%; margin: 0 auto; padding: 18px 16px; }
+  .msg.bot { align-items: flex-start; gap: 8px; }
+  .msg.bot::before { content: '📚'; flex: 0 0 30px; width: 30px; height: 30px; border-radius: 50%; background: var(--primary-soft); display: flex; align-items: center; justify-content: center; font-size: 14px; margin-top: 2px; }
+  .msg.bot .bubble { max-width: calc(82% - 38px); border-radius: 16px 16px 16px 4px; }
+  .msg.user .bubble { border-radius: 16px 16px 4px 16px; }
+  .option-box { max-width: calc(82% - 38px); }
+  .quiz-box { max-width: calc(94% - 38px); width: calc(94% - 38px); }
+  footer { max-width: 860px; width: 100%; margin: 0 auto; background: transparent; border-top: none; padding: 10px 16px 14px; gap: 8px; }
+  #input { border-radius: 22px; padding: 11px 16px; box-shadow: var(--shadow); }
+  #attach { border-radius: 50%; width: 42px; height: 42px; flex: 0 0 42px; padding: 0; font-size: 17px; }
+  #send { border-radius: 50%; width: 42px; height: 42px; flex: 0 0 42px; padding: 0; font-size: 16px; }
+  @media (min-width: 900px) {
+    .sidebar { display: flex; }
+    .wbar { display: none; }
+  }
 </style>
 </head>
 <body>
@@ -118,21 +146,34 @@
   </div>
 </div>
 <div id="app" class="hidden">
-  <header>📚 学习助手 <button id="themeBtn" title="切换界面风格">🎨</button><button id="logout">退出</button></header>
-  <div id="themePanel" class="theme-panel hidden"></div>
-  <main id="messages"></main>
-  <div id="submenu" class="submenu hidden"></div>
-  <div class="wbar">
-    <button class="wbtn" data-group="study">📚 学习</button>
-    <button class="wbtn" data-group="materials">📁 资料</button>
-    <button class="wbtn" data-group="more">⋯ 更多</button>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="sidebar-head"><span class="logo">📚</span><span>学习助手</span></div>
+      <div class="sidebar-nav">
+        <button class="wbtn" data-group="study">📚 学习</button>
+        <button class="wbtn" data-group="materials">📁 资料</button>
+        <button class="wbtn" data-group="more">⋯ 更多</button>
+      </div>
+      <div class="sidebar-foot">AI 智能学伴</div>
+    </aside>
+    <div class="main-col">
+      <header>📚 学习助手 <button id="themeBtn" title="切换界面风格">🎨</button><button id="logout">退出</button></header>
+      <div id="themePanel" class="theme-panel hidden"></div>
+      <main id="messages"></main>
+      <div id="submenu" class="submenu hidden"></div>
+      <div class="wbar">
+        <button class="wbtn" data-group="study">📚 学习</button>
+        <button class="wbtn" data-group="materials">📁 资料</button>
+        <button class="wbtn" data-group="more">⋯ 更多</button>
+      </div>
+      <footer>
+        <button id="attach" title="上传文件（PDF/DOC/DOCX/PPTX/图片）">📎</button>
+        <input type="file" id="fileInput" accept=".pdf,.doc,.docx,.pptx,.jpg,.jpeg,.png,.bmp,.webp" hidden>
+        <input id="input" placeholder="输入问题或指令…">
+        <button id="send">➤</button>
+      </footer>
+    </div>
   </div>
-  <footer>
-    <button id="attach" title="上传文件（PDF/DOC/DOCX/PPTX）">📎</button>
-    <input type="file" id="fileInput" accept=".pdf,.doc,.docx,.pptx,.jpg,.jpeg,.png,.bmp,.webp" hidden>
-    <input id="input" placeholder="输入问题或指令…">
-    <button id="send">发送</button>
-  </footer>
 </div>
 <script>
 const $ = s => document.querySelector(s);
