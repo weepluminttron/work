@@ -144,7 +144,8 @@ def _run_task(task_id: str, text: str, conversation_id: str = None):
                 else:
                     parts_out = [_explain_question(st["aid"], n) for n in nums[:3]]
                     reply = "\n\n---\n\n".join(parts_out)
-                    if len(nums) == 1:
+                    first_ok = not parts_out[0].startswith("❌") and "没有找到" not in parts_out[0]
+                    if len(nums) == 1 and first_ok:
                         st["mode"] = "followup"
                         st["qno"] = nums[0]
                         st["history"] = [("讲解", parts_out[0])]
@@ -802,7 +803,13 @@ def handle_web_command(text: str) -> str:
         if aid is None:
             return "用法：/explain id 归档ID [题号]\n示例：/explain id 3 1"
         if aid not in _web_papers:
-            return "请先通过「自测题」生成该归档的题目"
+            return (
+                "🤔 需要先为该归档生成题目，才能讲题。",
+                [
+                    {"label": "📝 先生成题目", "payload": {"step": "run", "cmd": f"/test id {aid}"}},
+                    {"label": "📕 错题本", "payload": {"step": "run", "cmd": f"/wrong id {aid}"}},
+                ],
+            )
         qno = None
         if len(parts) >= 4 and parts[1].lower() == "id" and parts[3].isdigit():
             qno = int(parts[3])
@@ -812,6 +819,8 @@ def handle_web_command(text: str) -> str:
             _web_pending_explain = {"aid": aid, "mode": "pick"}
             return "🤔 请发送要讲解的题号（如 1 或 1,3,5）"
         reply = _explain_question(aid, qno)
+        if "没有找到" in reply:
+            return reply
         _web_pending_explain = {"aid": aid, "mode": "followup", "qno": qno, "history": [("讲解", reply)]}
         return reply + "\n\n💬 还可以继续追问这道题，直接输入问题即可；发送其他指令则退出讲解"
 
@@ -1059,6 +1068,7 @@ def options():
         prompt = f"③ 选择「{row.get('filename', '')}」的学习模式："
         options_list = [
             {"label": "📝 答题模式（推荐）", "payload": {"step": "run", "cmd": f"/test id {row['id']}", "autoQuiz": row["id"]}},
+            {"label": "🤔 AI 讲题", "payload": {"step": "run", "cmd": f"/explain id {row['id']}"}},
             {"label": "📄 仅生成题目（不生成答案）", "payload": {"step": "run", "cmd": f"/test id {row['id']} 仅题目"}},
             {"label": "📕 错题本（不生成）", "payload": {"step": "run", "cmd": f"/wrong id {row['id']}"}},
             {"label": "❌ 取消，不生成", "payload": {"step": "back"}},
