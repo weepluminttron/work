@@ -71,39 +71,6 @@ def _internal_error(e):
     return jsonify({"ok": False, "error": "服务器内部错误"}), 500
 
 
-@app.route("/api/health")
-def health():
-    """健康检查接口（Docker HEALTHCHECK 使用）"""
-    return jsonify({"ok": True, "service": "study-agent", "time": int(time.time())})
-
-
-@app.route("/api/files", methods=["GET"])
-@login_required
-def files():
-    """归档文件列表（管理后台表格视图用）"""
-    from archive_db import get_all_archive_items
-    items = get_all_archive_items()
-    rows = []
-    total = 0
-    for it in items:
-        sp = it.get("save_path") or ""
-        size = 0
-        if sp and os.path.exists(sp):
-            try:
-                size = os.path.getsize(sp)
-            except OSError:
-                size = 0
-        total += size
-        rows.append({
-            "id": it.get("id"),
-            "filename": it.get("filename") or "",
-            "subject": it.get("subject") or "未分类",
-            "size": size,
-            "create_ts": it.get("create_ts"),
-        })
-    rows.sort(key=lambda r: r["create_ts"] or 0, reverse=True)
-    return jsonify({"ok": True, "files": rows, "total_size": total, "count": len(rows)})
-
 # 自测题答案暂存：{归档ID: 答案文本}，点“查看答案”按钮时返回
 _web_answers = {}
 # 自测题整卷暂存：{归档ID: {q, a, subject}}，供错题本记录使用
@@ -257,6 +224,40 @@ def login_required(f):
             return jsonify({"ok": False, "error": "未登录"}), 401
         return f(*args, **kwargs)
     return wrapper
+
+
+@app.route("/api/health")
+def health():
+    """健康检查接口（Docker HEALTHCHECK 使用）"""
+    return jsonify({"ok": True, "service": "study-agent", "time": int(time.time())})
+
+
+@app.route("/api/files", methods=["GET"])
+@login_required
+def files():
+    """归档文件列表（管理后台表格视图用）"""
+    from archive_db import get_all_archive_items
+    items = get_all_archive_items()
+    rows = []
+    total = 0
+    for it in items:
+        sp = it.get("save_path") or ""
+        size = 0
+        if sp and os.path.exists(sp):
+            try:
+                size = os.path.getsize(sp)
+            except OSError:
+                size = 0
+        total += size
+        rows.append({
+            "id": it.get("id"),
+            "filename": it.get("filename") or "",
+            "subject": it.get("subject") or "未分类",
+            "size": size,
+            "create_ts": it.get("create_ts"),
+        })
+    rows.sort(key=lambda r: r["create_ts"] or 0, reverse=True)
+    return jsonify({"ok": True, "files": rows, "total_size": total, "count": len(rows)})
 
 
 @app.route("/")
