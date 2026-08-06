@@ -462,7 +462,9 @@ async function submitQuiz(st, box){
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({aid: st.aid, answers: answers})
     });
-    const d = await r.json();
+    let d = null;
+    try { d = await r.json(); } catch(e){ d = null; }
+    if (!d){ addMsg('❌ 服务器响应异常（可能处理超时），请稍后重试', 'bot'); return; }
     if (!d.ok){ addMsg('❌ ' + (d.error || '提交失败'), 'bot'); return; }
     if (st.wrap) st.wrap.remove();
     addMsg(d.reply, 'bot');
@@ -475,13 +477,16 @@ async function submitQuiz(st, box){
 async function openQuiz(aid){
   try {
     const r = await fetch('/api/quiz?aid=' + encodeURIComponent(aid));
-    const d = await r.json();
+    let d = null;
+    try { d = await r.json(); } catch(e){ d = null; }
+    if (!d){ addMsg('❌ 服务器响应异常（可能处理超时），请稍后重试', 'bot'); return; }
     if (!d.ok){ addMsg('❌ ' + (d.error || '加载失败'), 'bot'); return; }
     let answers = {};
     let marked = [];
     try {
       const rr = await fetch('/api/quiz_resume?aid=' + encodeURIComponent(aid));
-      const rd = await rr.json();
+      let rd = null;
+      try { rd = await rr.json(); } catch(e){ rd = null; }
       if (rd.ok){ answers = rd.answers || {}; marked = rd.marked || []; }
     } catch(e){}
     try {

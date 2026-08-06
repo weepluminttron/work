@@ -248,14 +248,30 @@ def _parse_aid(parts):
 def _extract_answer_keys(answer_text: str) -> dict:
     """从答案文本中提取选择题正确答案：{题号: 选项字母}"""
     import re
+    text = answer_text or ""
     keys = {}
-    pat1 = re.compile(r"(?m)^\s*(\d{1,3})\s*[.、．]\s*(?:正确答案|答案)\s*[：:]\s*([A-Da-d])\b")
-    for m in pat1.finditer(answer_text or ""):
-        keys.setdefault(int(m.group(1)), m.group(2).upper())
-    if not keys:
-        pat2 = re.compile(r"(?m)^\s*(\d{1,3})\s*[.、．]\s*([A-Da-d])\s*[.、．)）]\s*")
-        for m in pat2.finditer(answer_text or ""):
+    # 按编号切段：支持 1. / 1、 / 1． / 1: / 1： / **1.** / 【1】
+    sec_pat = re.compile(r"(?m)^\s*(?:\*\*)?\s*\[?(\d{1,3})\]?\s*[.、．:：]\s*(.*)$")
+    sections = [(int(m.group(1)), m.group(2)) for m in sec_pat.finditer(text)]
+    if not sections:
+        # 全文宽松匹配：第1题 正确答案 B / 1 答案：B 等
+        loose = re.compile(r"(?:第\s*|[【\[])?\s*(\d{1,3})\s*(?:题|[】\]])?\s*[.、．:：]?\s*(?:正确答案|答案|答案为|选|选择)\s*[是为：:]?\s*\*{0,2}([A-Da-d])")
+        for m in loose.finditer(text):
             keys.setdefault(int(m.group(1)), m.group(2).upper())
+        return keys
+    for no, sec in sections:
+        s = sec.replace("*", "").strip()
+        m = re.search(r"(?:正确答案|答案|答案为|选|选择)\s*[是为：:]?\s*([A-Da-d])", s)
+        if m:
+            keys.setdefault(no, m.group(1).upper())
+            continue
+        m = re.match(r"([A-Da-d])\s*[.、．:：)）。]\s*", s)
+        if m:
+            keys.setdefault(no, m.group(1).upper())
+            continue
+        m = re.search(r"[（(]\s*([A-Da-d])\s*[）)]", s)
+        if m:
+            keys.setdefault(no, m.group(1).upper())
     return keys
 
 
@@ -928,8 +944,8 @@ def _parse_quiz_options(q_text: str) -> list:
     """从题目文本中提取 A/B/C/D 选项"""
     import re
     options = []
-    for m in re.finditer(r"(?m)^\s*([A-Da-d])\s*[.、．)）]\s*(.+)$", q_text):
-        options.append({"key": m.group(1).upper(), "text": m.group(2).strip()})
+    for m in re.finditer(r"(?m)^\s*(?:\*\*)?\s*([A-Da-d])\s*[.、．)）]\s*(.*)$", q_text):
+        options.append({"key": m.group(1).upper(), "text": m.group(2).strip().rstrip("*").strip()})
     return options
 
 
@@ -947,6 +963,7 @@ def quiz_data():
     questions = []
     for no, sec in split_numbered(paper["q"]):
         questions.append({"no": no, "text": sec, "options": _parse_quiz_options(sec)})
+    print(f"📱答题模式加载：归档ID {aid}（{len(questions)} 题）")
     return jsonify({"ok": True, "aid": aid, "subject": paper.get("subject", ""), "questions": questions})
 
 
@@ -972,6 +989,7 @@ def quiz_save():
         return jsonify({"ok": False, "error": "缺少归档ID"})
     from quiz_store import save_record
     save_record(aid, data.get("answers") or {}, data.get("marked") or [])
+    print(f"💾答题进度已保存：归档ID {aid}")
     return jsonify({"ok": True})
 
 
@@ -995,6 +1013,7 @@ def quiz_submit():
         reply, options = result
     else:
         reply, options = result, None
+    print(f"📝提交批改：归档ID {aid}")
     return jsonify({"ok": True, "reply": reply, "options": options})
 
 

@@ -27,7 +27,8 @@ def _save(data: dict):
 
 def split_numbered(text: str):
     """把带编号的文本切分成 [(编号, 内容), ...]"""
-    pattern = re.compile(r"(?m)^\s*(\d{1,3})\s*[.、．]\s*")
+    # 兼容 1. / 1、 / 1． / 1: / 1： / **1.** 等常见格式
+    pattern = re.compile(r"(?m)^\s*(?:\*\*)?\s*\[?(\d{1,3})\]?\s*[.、．:：]\s*")
     matches = list(pattern.finditer(text or ""))
     sections = []
     for i, m in enumerate(matches):
