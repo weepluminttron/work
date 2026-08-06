@@ -598,16 +598,40 @@ def options():
 
     if step == "days":
         days = data.get("days")
+        if next_cmd == "done":
+            # 打卡不需要选周期：直接定位该归档最靠前未完成的一天
+            row = _get_archive(data.get("aid"))
+            if not row:
+                return jsonify({"ok": False, "error": "归档记录不存在，可能已被删除"})
+            from review_scheduler import get_archive_progress
+            progress_rows = get_archive_progress(row["id"])
+            first_unfinished = None
+            for pr in progress_rows:
+                if not pr["finished"]:
+                    first_unfinished = pr["day_no"]
+                    break
+            if first_unfinished is None:
+                return jsonify({"ok": True, "prompt": "🎉 该归档所有任务都已完成！可以看看「额外任务」拓展学习", "options": []})
+            task_preview = ""
+            for pr in progress_rows:
+                if pr["day_no"] == first_unfinished:
+                    task_preview = (pr["task_content"] or "").strip()[:60]
+                    break
+            prompt = f"📌 归档ID {row['id']} 第 {first_unfinished} 天：{task_preview}"
+            return jsonify({
+                "ok": True,
+                "prompt": prompt,
+                "options": [
+                    {"label": f"✅ 打卡第 {first_unfinished} 天", "payload": {"step": "run", "cmd": f"/done id {row['id']} day {first_unfinished}"}}
+                ]
+            })
         if days is None:
             options_list = [
                 {"label": f"{d} 天", "payload": {"step": "days", "next": next_cmd, "subject": subject, "aid": aid, "days": d}}
                 for d in (3, 5, 7, 10, 14)
             ]
             return jsonify({"ok": True, "prompt": "③ 选择学习天数：", "options": options_list})
-        if next_cmd == "done":
-            cmd = f"/done id {aid} day {days}"
-        else:
-            cmd = f"/{next_cmd} id {aid} days {days}"
+        cmd = f"/{next_cmd} id {aid} days {days}"
         print(f"📱网页版选项完成，执行：{cmd}")
         return jsonify({"ok": True, "prompt": "", "options": [], "run": cmd})
 
