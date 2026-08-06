@@ -571,6 +571,8 @@ function cleanQuestionText(text){
   t = t.split('\n').filter(line => !/^\s*\*{0,2}[A-Da-d]\s*[.、．)）]/.test(line)).join('\n');
   // 清理残余的整行加粗星号
   t = t.replace(/^\s*\*\*\s*$/gm, '');
+  // 兜底：去掉所有残余星号，避免 ** 裸显示
+  t = t.replace(/\*/g, '');
   return t.trim();
 }
 

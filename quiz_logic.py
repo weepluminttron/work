@@ -55,17 +55,14 @@ def parse_quiz_options(q_text: str) -> list:
     """从题目文本中提取 A/B/C/D 选项"""
     options = []
     for m in re.finditer(r"(?m)^\s*(?:\*\*)?\s*([A-Da-d])\s*[.、．)）]\s*(.*)$", q_text):
-        options.append({"key": m.group(1).upper(), "text": m.group(2).strip().rstrip("*").strip()})
+        options.append({"key": m.group(1).upper(), "text": m.group(2).strip().replace("*", "").strip()})
     return options
 
 
 def clean_question_text(text: str) -> str:
     """清理题目文本：去掉行首编号与加粗标记，用于界面展示（保留选项行）"""
     t = re.sub(r"^\s*\*{0,2}\s*\d{1,3}\s*[.、．:：]\s*\*{0,2}", "", text or "", count=1)
-    lines = t.split("\n")
-    if lines and lines[0].endswith("**"):
-        lines[0] = lines[0][:-2]
-    t = "\n".join(lines)
+    t = t.replace("*", "")
     return t.strip()
 
 

@@ -64,6 +64,12 @@ class QuizLogicTest(unittest.TestCase):
     def test_clean_question_text(self):
         self.assertEqual(clean_question_text("**1. \u9898\u76ee**\nA. \u7532\nB. \u4e59"), "\u9898\u76ee\nA. \u7532\nB. \u4e59")
         self.assertEqual(clean_question_text("1\uff1a\u9898\u76ee\u4e8c\nA. x"), "\u9898\u76ee\u4e8c\nA. x")
+        self.assertEqual(clean_question_text("**1. \u300a\u9898\u300b**"), "\u300a\u9898\u300b")
+
+    def test_parse_quiz_options_strips_asterisks(self):
+        opts = parse_quiz_options("A. **\u9009\u9879\u7532**\nB. \u9009\u9879\u4e59")
+        self.assertEqual(opts[0]["text"], "\u9009\u9879\u7532")
+        self.assertEqual(opts[1]["text"], "\u9009\u9879\u4e59")
 
     def _paper(self, keys=None):
         return {
