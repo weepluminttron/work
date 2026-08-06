@@ -329,6 +329,54 @@ MARKET_PACKAGES = [
         "tags": ["人文", "入门"], "subject": "心理学",
         "skills": ["认知原理", "学习动机", "记忆曲线", "情绪调节", "专注力训练"],
     },
+    {
+        "id": "pkg_kaoyan_en", "type": "package", "title": "考研英语一冲刺",
+        "icon": "🎯", "desc": "真题精读 + 长难句拆解 + 作文模板，考前高效提分。",
+        "tags": ["考试", "语言"], "subject": "英语",
+        "skills": ["真题精读", "长难句拆解", "作文模板", "完形填空技巧", "翻译策略"],
+    },
+    {
+        "id": "pkg_gaokao_math", "type": "package", "title": "高考数学一轮复习",
+        "icon": "🧮", "desc": "按知识模块系统过一遍高考数学，配合典型题训练。",
+        "tags": ["考试", "数学"], "subject": "数学",
+        "skills": ["函数与导数", "三角函数", "数列", "立体几何", "概率统计", "解析几何"],
+    },
+    {
+        "id": "pkg_python_office", "type": "package", "title": "Python 自动化办公",
+        "icon": "🐍", "desc": "用 Python 批量处理文件、表格和邮件，告别重复劳动。",
+        "tags": ["编程", "职业"], "subject": "编程",
+        "skills": ["文件批量处理", "Excel 操作", "邮件自动化", "网页数据抓取", "定时任务"],
+    },
+    {
+        "id": "pkg_xingce", "type": "package", "title": "公务员行测专项",
+        "icon": "🏛", "desc": "五大模块系统训练，掌握行测解题节奏与技巧。",
+        "tags": ["考试", "职业"], "subject": "考证",
+        "skills": ["言语理解", "判断推理", "数量关系", "资料分析", "常识判断"],
+    },
+    {
+        "id": "pkg_japanese", "type": "package", "title": "日语五十音入门",
+        "icon": "🌸", "desc": "从五十音开始，掌握假名、发音和基础问候。",
+        "tags": ["语言", "入门"], "subject": "日语",
+        "skills": ["平假名", "片假名", "浊音与拗音", "日常问候", "基础句法"],
+    },
+    {
+        "id": "pkg_paper", "type": "package", "title": "学术论文写作",
+        "icon": "📚", "desc": "从选题到润色，完成一篇规范、有说服力的学术论文。",
+        "tags": ["学术", "职业"], "subject": "学术",
+        "skills": ["选题与文献", "大纲搭建", "论证展开", "引用规范", "降重润色"],
+    },
+    {
+        "id": "pkg_econ", "type": "package", "title": "经济学原理基础",
+        "icon": "📈", "desc": "理解供需、成本与市场结构，建立经济学分析框架。",
+        "tags": ["人文", "入门"], "subject": "经济学",
+        "skills": ["供需模型", "弹性理论", "成本分析", "市场结构", "宏观经济指标"],
+    },
+    {
+        "id": "pkg_french", "type": "package", "title": "法语日常会话",
+        "icon": "🥐", "desc": "掌握法语发音和旅行日常会话，开口说简单法语。",
+        "tags": ["语言", "入门"], "subject": "法语",
+        "skills": ["发音规则", "基础问候", "数字与时间", "餐厅购物", "旅行会话"],
+    },
 ]
 
 MARKET_DATASETS = [
@@ -338,6 +386,14 @@ MARKET_DATASETS = [
     {"id": "ds_math", "type": "dataset", "title": "考研数学公式手册", "icon": "📐", "price": "免费", "subject": "数学"},
     {"id": "ds_gk", "type": "dataset", "title": "公考行测题库", "icon": "🏛", "price": "¥19.9", "subject": "考证"},
     {"id": "ds_history", "type": "dataset", "title": "世界史大事年表", "icon": "🌍", "price": "免费", "subject": "历史"},
+    {"id": "ds_politics", "type": "dataset", "title": "考研政治考点手册", "icon": "📖", "price": "免费", "subject": "考证"},
+    {"id": "ds_cet", "type": "dataset", "title": "四六级高频词组", "icon": "📇", "price": "免费", "subject": "英语"},
+    {"id": "ds_n5", "type": "dataset", "title": "日语 N5 语法清单", "icon": "🗾", "price": "免费", "subject": "日语"},
+    {"id": "ds_alg", "type": "dataset", "title": "算法模板速查", "icon": "⚙️", "price": "¥9.9", "subject": "编程"},
+    {"id": "ds_accounting", "type": "dataset", "title": "会计从业基础题库", "icon": "🧾", "price": "¥12.9", "subject": "职业"},
+    {"id": "ds_teacher", "type": "dataset", "title": "教师资格证简答题库", "icon": "🍎", "price": "免费", "subject": "考证"},
+    {"id": "ds_topik", "type": "dataset", "title": "韩语 TOPIK 词汇", "icon": "🇰🇷", "price": "免费", "subject": "语言"},
+    {"id": "ds_dynasty", "type": "dataset", "title": "中国历史朝代歌诀", "icon": "🏯", "price": "免费", "subject": "历史"},
 ]
 
 
