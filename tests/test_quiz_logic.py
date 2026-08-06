@@ -22,6 +22,39 @@ class QuizLogicTest(unittest.TestCase):
         for text, expected in cases:
             self.assertEqual(extract_answer_keys(text), expected, text)
 
+    def test_extract_judge_and_multi_keys(self):
+        cases = [
+            ("1. \u7b54\u6848\uff1a\u5bf9", {1: "\u5bf9"}),
+            ("1. \u6b63\u786e\u7b54\u6848\uff1a\u6b63\u786e", {1: "\u5bf9"}),
+            ("1. \u7b54\u6848\uff1a\u9519", {1: "\u9519"}),
+            ("2. \u7b54\u6848\uff1aABD", {2: "ABD"}),
+            ("1. \u7b54\u6848\uff1aA\u3001B\u3001D", {1: "ABD"}),
+        ]
+        for text, expected in cases:
+            self.assertEqual(extract_answer_keys(text), expected, text)
+
+    def test_grade_judge_questions(self):
+        paper = self._paper(keys={1: "\u5bf9", 2: "\u9519"})
+        paper["q"] = "1. q1\n2. q2\n"
+        paper["a"] = "1. \u7b54\u6848\uff1a\u5bf9\n2. \u7b54\u6848\uff1a\u9519"
+        r = grade_paper(paper, "\u6b63\u786e,\u9519")
+        self.assertEqual((r["correct"], r["graded"]), (2, 2))
+        r2 = grade_paper(paper, "T,F")
+        self.assertEqual(r2["correct"], 2)
+        r3 = grade_paper(paper, "\u5bf9,\u5bf9")
+        self.assertEqual(r3["wrong_nos"], [2])
+
+    def test_grade_multi_choice(self):
+        paper = self._paper(keys={1: "ABD", 2: "C"})
+        paper["q"] = "1. q1\nA. a B. b C. c D. d\n2. q2\nA. a B. b C. c\n"
+        paper["a"] = "1. \u7b54\u6848\uff1aABD\n2. \u7b54\u6848\uff1aC"
+        r = grade_paper(paper, "ABD,C")
+        self.assertEqual((r["correct"], r["graded"]), (2, 2))
+        r2 = grade_paper(paper, "1:ABD 2:C")
+        self.assertEqual(r2["correct"], 2)
+        r3 = grade_paper(paper, "ABD,B")
+        self.assertEqual(r3["wrong_nos"], [2])
+
     def test_parse_quiz_options(self):
         q = "1. q\n**A. \u9009\u9879\u7532**\nB\u3001\u9009\u9879\u4e19\nC. \u9009\u9879\u4e01"
         opts = parse_quiz_options(q)

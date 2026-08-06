@@ -241,7 +241,7 @@ def get_study_report() -> str:
         conn.row_factory = sqlite3.Row
         cur = conn.cursor()
         cur.execute("""
-        SELECT archive_id, subject, day_no, finished, start_date
+        SELECT archive_id, subject, day_no, finished, start_date, complete_date
         FROM study_progress
         """)
         rows = cur.fetchall()
@@ -276,10 +276,26 @@ def get_study_report() -> str:
                 overdue_total += 1
 
     streak = get_study_streak()
+    # 最近7天打卡日历
+    done_dates = {r["complete_date"] for r in rows if r["finished"] and r["complete_date"]}
+    cal = ["✅" if (today_dt - timedelta(days=i)).isoformat() in done_dates else "⬜" for i in range(6, -1, -1)]
+    cal_line = "🗓 最近7天：" + "".join(cal)
+    # 错题本统计
+    wrong_count = 0
+    wrong_archives = 0
+    try:
+        from wrong_book import list_wrong
+        wrong_list = list_wrong()
+        wrong_count = sum(x["count"] for x in wrong_list)
+        wrong_archives = len(wrong_list)
+    except Exception:
+        pass
     lines = [
         "📊【学情诊断报告】",
         f"🔥 连续打卡：{streak} 天" if streak else "🔥 连续打卡：还没有开始",
+        cal_line,
         f"📚 任务总览：{len(subjects)} 个科目 / {total} 个任务，完成 {finished}（{rate * 100:.0f}%）",
+        f"📕 错题本：{wrong_count} 道待复习（{wrong_archives} 个归档）" if wrong_count else "📕 错题本：已清空 🎉",
         "",
         "📈 分科情况：",
     ]
@@ -304,6 +320,8 @@ def get_study_report() -> str:
         lines.append(f"- 「{weak_subj[0]}」目前完成率最低，建议今天优先安排它。")
     if finished == total:
         lines.append("- 全部任务已完成！可以提前预习「额外任务」，或上传新资料继续拓展。")
+    if wrong_count:
+        lines.append(f"- 错题本还有 {wrong_count} 道题没复习，建议先花 10 分钟过一遍，再用「错题本」清除已掌握的。")
     lines.append("")
     lines.append(_encourage_text(rate))
     return "\n".join(lines)

@@ -6,35 +6,49 @@ from wrong_book import split_numbered
 
 
 def extract_answer_keys(answer_text: str) -> dict:
-    """从答案文本中提取选择题正确答案：{题号: 选项字母}（兼容多种AI输出格式）"""
+    """从答案文本中提取正确答案：{题号: 选项字母/多选组合/对错}（兼容多种AI输出格式）"""
     text = answer_text or ""
     keys = {}
     # 按编号切段：支持 1. / 1、 / 1． / 1: / 1： / **1.** / 【1】
     sec_pat = re.compile(r"(?m)^\s*(?:\*\*)?\s*\[?(\d{1,3})\]?\s*[.、．:：]\s*(.*)$")
     sections = [(int(m.group(1)), m.group(2)) for m in sec_pat.finditer(text)]
+    value_pat = r"([A-Da-d]{1,4}(?:\s*[、,，和与]\s*[A-Da-d]{1,4})*|对|错|正确|错误|√|×|[TF])"
     if not sections:
         # 全文宽松匹配：第1题 正确答案 B / 1 答案：B 等
         loose = re.compile(
             r"(?:第\s*|[【\[])?\s*(\d{1,3})\s*(?:题|[】\]])?\s*[.、．:：]?\s*"
-            r"(?:正确答案|答案|答案为|选|选择)\s*[是为：:]?\s*\*{0,2}([A-Da-d])"
+            r"(?:正确答案|答案|答案为|选|选择)\s*[是为：:]?\s*\*{0,2}" + value_pat
         )
         for m in loose.finditer(text):
-            keys.setdefault(int(m.group(1)), m.group(2).upper())
+            keys.setdefault(int(m.group(1)), _normalize_answer(m.group(2)))
         return keys
     for no, sec in sections:
         s = sec.replace("*", "").strip()
-        m = re.search(r"(?:正确答案|答案|答案为|选|选择)\s*[是为：:]?\s*([A-Da-d])", s)
+        m = re.search(r"(?:正确答案|答案|答案为|选|选择)\s*[是为：:]?\s*" + value_pat, s)
         if m:
-            keys.setdefault(no, m.group(1).upper())
+            keys.setdefault(no, _normalize_answer(m.group(1)))
             continue
-        m = re.match(r"([A-Da-d])\s*[.、．:：)）。]\s*", s)
+        m = re.match(r"([A-Da-d]{1,4}|对|错|正确|错误|√|×|[TF])\s*[.、．:：)）。]\s*", s)
         if m:
-            keys.setdefault(no, m.group(1).upper())
+            keys.setdefault(no, _normalize_answer(m.group(1)))
             continue
         m = re.search(r"[（(]\s*([A-Da-d])\s*[）)]", s)
         if m:
             keys.setdefault(no, m.group(1).upper())
     return keys
+
+
+def _normalize_answer(raw) -> str:
+    """统一答案格式：判断题同义词归一、多选去分隔符排序、单选转大写"""
+    s = str(raw or "").strip().upper()
+    if s in ("正确", "对", "T", "TRUE", "√"):
+        return "对"
+    if s in ("错误", "错", "F", "FALSE", "×", "X"):
+        return "错"
+    letters = re.sub(r"[^A-D]", "", s)
+    if letters:
+        return "".join(sorted(set(letters)))
+    return s
 
 
 def parse_quiz_options(q_text: str) -> list:
@@ -60,7 +74,7 @@ def grade_paper(paper: dict, raw_answers: str) -> dict:
 
     # 格式1：1:B 2:A / 1.B / 第1题 B（按题号对应，顺序无关）
     pair_map = {}
-    for m in re.finditer(r"(?:第)?\s*(\d{1,3})\s*[题\.、．:：]?\s*([A-Da-d])", raw):
+    for m in re.finditer(r"(?:第)?\s*(\d{1,3})\s*[题\.、．:：]?\s*([A-Da-d]{1,4}|对|错|正确|错误|√|×|[TF])", raw):
         pair_map.setdefault(int(m.group(1)), m.group(2).upper())
     if len(pair_map) >= 2:
         answer_map = pair_map
@@ -101,7 +115,7 @@ def grade_paper(paper: dict, raw_answers: str) -> dict:
         correct_key = keys[no]
         user_key = answer_map.get(no, "未作答")
         graded += 1
-        if user_key == correct_key:
+        if user_key != "未作答" and _normalize_answer(user_key) == _normalize_answer(correct_key):
             correct += 1
             lines.append(f"✅ 第{no}题：你的答案 {user_key} 正确")
         else:
