@@ -4,6 +4,11 @@ from config import LLM_API_KEY, LLM_API_URL, LLM_MODEL
 
 def llm_request(prompt: str, timeout: int = 30) -> str:
     """通用LLM请求，增加超时捕获、异常处理"""
+    from llm_cache import cache_get, cache_set, make_key
+    cache_key = make_key("llm", prompt)
+    cached = cache_get(cache_key)
+    if cached is not None:
+        return cached
     headers = {
         "Authorization": f"Bearer {LLM_API_KEY}",
         "Content-Type": "application/json"
@@ -18,6 +23,8 @@ def llm_request(prompt: str, timeout: int = 30) -> str:
         resp.raise_for_status()
         resp_json = resp.json()
         content = resp_json["choices"][0]["message"]["content"]
+        if content and not content.startswith("❌"):
+            cache_set(cache_key, content.strip())
         return content.strip()
     except requests.exceptions.Timeout:
         return "❌大模型接口请求超时，请稍后重试"

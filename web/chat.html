@@ -479,40 +479,64 @@ function addMsg(text, who){
   scrollToBottom();
 }
 
-function addTyping(){
+function typingHint(text){
+  const t = (text || '').trim();
+  if (t.startsWith('/test')) return '正在生成题目，通常需要 20-40 秒…';
+  if (t.startsWith('/cards')) return '正在提炼知识点和背诵卡片…';
+  if (t.startsWith('/plan')) return '正在生成学习计划…';
+  if (t.startsWith('/daily')) return '正在拆分每日任务…';
+  if (t.startsWith('/explain')) return 'AI 老师思考中…';
+  if (t.startsWith('/polish') || t.startsWith('/改写')) return '正在润色文本…';
+  if (t.startsWith('/rebuild')) return '正在重建知识库，可能需要几分钟…';
+  if (t.startsWith('/merge')) return '正在合并归档…';
+  return '正在思考…';
+}
+
+function addTyping(hint){
   const div = document.createElement('div');
   div.className = 'msg bot';
   const b = document.createElement('div');
   b.className = 'bubble typing';
-  b.textContent = '正在思考…';
+  div._base = hint || '正在思考…';
+  b.textContent = div._base;
+  let sec = 0;
+  div._timer = setInterval(() => {
+    sec++;
+    b.textContent = div._base + '（⏱ ' + sec + 's）';
+  }, 1000);
   div.appendChild(b);
   $('#messages').appendChild(div);
   scrollToBottom();
   return div;
 }
 
+function removeTyping(el){
+  if (el && el._timer) clearInterval(el._timer);
+  if (el) el.remove();
+}
+
 async function safeJson(r){
   try { return await r.json(); } catch (e) { return null; }
 }
 
-async function pollTask(taskId){
-  const typing = addTyping();
+async function pollTask(taskId, hint){
+  const typing = addTyping(hint);
   let tries = 0;
   try {
     while (tries < 600) {
       tries += 1;
       const r = await fetch('/api/task?task_id=' + encodeURIComponent(taskId));
       const d = await safeJson(r);
-      if (r.status === 401) { typing.remove(); showLogin(); return null; }
-      if (d && d.status === 'done') { typing.remove(); return d; }
-      if (d && !d.ok) { typing.remove(); addMsg('❌ ' + (d.error || '任务失败'), 'bot'); return null; }
+      if (r.status === 401) { removeTyping(typing); showLogin(); return null; }
+      if (d && d.status === 'done') { removeTyping(typing); return d; }
+      if (d && !d.ok) { removeTyping(typing); addMsg('❌ ' + (d.error || '任务失败'), 'bot'); return null; }
       await new Promise(res => setTimeout(res, 1500));
     }
-    typing.remove();
+    removeTyping(typing);
     addMsg('❌ 任务处理超时（超过15分钟），请重试', 'bot');
     return null;
   } catch (e) {
-    typing.remove();
+    removeTyping(typing);
     addMsg('❌ 网络错误：' + e.message, 'bot');
     return null;
   }
@@ -522,7 +546,8 @@ async function runChat(text){
   autoScroll = true;
   $('#scrollDown').classList.add('hidden');
   addMsg(text, 'user');
-  const typing = addTyping();
+  const hint = typingHint(text);
+  const typing = addTyping(hint);
   try {
     const r = await fetch('/api/chat', {
       method: 'POST',
@@ -530,17 +555,17 @@ async function runChat(text){
       body: JSON.stringify({message: text, conversation_id: currentConvId})
     });
     const d = await safeJson(r);
-    typing.remove();
+    removeTyping(typing);
     if (!d) { addMsg('❌ 服务器响应异常（状态码 ' + r.status + '），可能处理超时，请稍后重试', 'bot'); return; }
     if (r.status === 401) { showLogin(); return; }
     if (!d.ok || !d.task_id) { addMsg('❌ ' + (d.error || '发送失败'), 'bot'); return; }
-    const result = await pollTask(d.task_id);
+    const result = await pollTask(d.task_id, hint);
     if (!result) return;
     addMsg(result.reply, 'bot');
     if (result.options) renderOptions(result.options);
     refreshConvs();
   } catch (e) {
-    typing.remove();
+    removeTyping(typing);
     addMsg('❌ 网络错误：' + e.message, 'bot');
   }
 }
@@ -562,7 +587,7 @@ async function fetchOptions(body){
       body: JSON.stringify(body)
     });
     const d = await safeJson(r);
-    typing.remove();
+    removeTyping(typing);
     if (!d) { addMsg('❌ 服务器响应异常（状态码 ' + r.status + '），可能处理超时，请稍后重试', 'bot'); return; }
     if (r.status === 401) { showLogin(); return; }
     if (!d.ok) { addMsg('❌ ' + (d.error || '出错了'), 'bot'); return; }
@@ -570,7 +595,7 @@ async function fetchOptions(body){
     renderOptions(d.options);
     if (d.run) runChat(d.run);
   } catch (e) {
-    typing.remove();
+    removeTyping(typing);
     addMsg('❌ 网络错误：' + e.message, 'bot');
   }
 }
