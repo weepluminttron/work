@@ -1,6 +1,5 @@
 import requests
 import json
-import time
 from config import LLM_API_KEY, LLM_API_URL, LLM_MODEL
 
 def llm_request(prompt: str, timeout: int = 30) -> str:

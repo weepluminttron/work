@@ -8,6 +8,15 @@ __pycache__/
 *.db-wal
 archive_db
 test_record_cache.json
+wrong_book.json
+quiz_records.json
+chat_memory.json
+study_docs/
+学习笔记/
+chroma_study_kb/
+
+# 打包产物
+study_agent_latest.zip
 
 # 环境变量与密钥
 .env

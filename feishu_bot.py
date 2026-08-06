@@ -1,7 +1,5 @@
 # -*- coding:utf-8 -*-
 import json
-import re
-import asyncio
 import requests
 import io
 import time
@@ -17,7 +15,7 @@ from concurrent.futures import ThreadPoolExecutor
 from flask import Flask, request, jsonify
 import config
 # ==========新增向量库导入【RAG知识库】==========
-from vector_kb import rag_answer, add_archive_to_kb, remove_archive_from_kb, rebuild_kb
+from vector_kb import add_archive_to_kb, remove_archive_from_kb, rebuild_kb
 
 # 全局环境变量，限制底层库线程，防止CPU/内存爆炸
 os.environ["OMP_NUM_THREADS"] = "2"
