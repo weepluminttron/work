@@ -513,8 +513,11 @@ def handle_web_command(text: str) -> str:
         row = _get_archive(aid)
         if not row:
             return f"❌未找到归档ID {aid}"
+        only_questions = len(parts) >= 4 and parts[3] in ("仅题目", "只出题", "noanswer")
         from llm_summary import generate_test_questions
-        q, a = generate_test_questions(row["file_text"], row["subject"], 20)
+        q, a = generate_test_questions(row["file_text"], row["subject"], 20, with_answers=not only_questions)
+        if only_questions:
+            return q + f"\n\n💡需要答题/批改/讲题时，重新选择「答题模式」即可（会生成带答案版本）"
         if len(_web_answers) >= 100:
             _web_answers.pop(next(iter(_web_answers)))
         _web_answers[aid] = a
@@ -784,6 +787,8 @@ def options():
             label = fname if fname.startswith("【合并】") else f"ID{did} {fname}"
             if next_cmd == "delete":
                 payload = {"step": "confirm", "next": "delete", "aid": did}
+            elif next_cmd == "test":
+                payload = {"step": "mode", "next": "test", "subject": subject, "aid": did}
             elif next_cmd in ("plan", "daily", "done"):
                 payload = {"step": "days", "next": next_cmd, "subject": subject, "aid": did}
             else:
@@ -791,6 +796,22 @@ def options():
             options_list.append({"label": label, "payload": payload})
         print(f"📱网页版选项：选择文档（{subject}，共{len(docs)}个）")
         return jsonify({"ok": True, "prompt": f"② 选择文档（{subject}）：", "options": options_list})
+
+    if step == "mode":
+        row = _get_archive(data.get("aid"))
+        if not row:
+            return jsonify({"ok": False, "error": "归档记录不存在，可能已被删除"})
+        prompt = f"③ 选择「{row.get('filename', '')}」的学习模式："
+        options_list = [
+            {"label": "📝 答题模式（推荐）", "payload": {"step": "run", "cmd": f"/test id {row['id']}"}},
+            {"label": "📄 仅生成题目（不生成答案）", "payload": {"step": "run", "cmd": f"/test id {row['id']} 仅题目"}},
+            {"label": "📕 错题本（不生成）", "payload": {"step": "run", "cmd": f"/wrong id {row['id']}"}},
+            {"label": "❌ 取消，不生成", "payload": {"step": "back"}},
+        ]
+        return jsonify({"ok": True, "prompt": prompt, "options": options_list})
+
+    if step == "back":
+        return jsonify({"ok": True, "prompt": "已取消，没有生成任何题目。", "options": []})
 
     if step == "confirm":
         row = _get_archive(data.get("aid"))
