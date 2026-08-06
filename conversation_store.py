@@ -44,7 +44,7 @@ def list_conversations() -> list:
 def create_conversation() -> dict:
     cid = uuid.uuid4().hex[:12]
     now = time.time()
-    conv = {"title": "新对话", "messages": [], "created": now, "updated": now}
+    conv = {"title": "新对话", "messages": [], "created": now, "updated": now, "auto_titled": False}
     with _lock:
         data = _load()
         data[cid] = conv
@@ -62,6 +62,7 @@ def get_conversation(cid: str) -> dict:
         "id": cid,
         "title": conv.get("title", "新对话"),
         "messages": conv.get("messages", []) or [],
+        "auto_titled": conv.get("auto_titled", False),
     }
 
 
@@ -78,6 +79,23 @@ def append_messages(cid: str, user_text: str, assistant_text: str) -> bool:
         if len(messages) <= 2 and conv.get("title", "新对话") == "新对话":
             title = (user_text or "").strip().replace("\n", " ")[:30]
             conv["title"] = title if title else "新对话"
+        conv["updated"] = time.time()
+    _save(data)
+    return True
+
+
+def update_title(cid: str, title: str) -> bool:
+    """更新对话标题（AI 自动命名）"""
+    title = (title or "").strip()
+    if not title:
+        return False
+    with _lock:
+        data = _load()
+        conv = data.get(cid)
+        if conv is None:
+            return False
+        conv["title"] = title[:30]
+        conv["auto_titled"] = True
         conv["updated"] = time.time()
         _save(data)
     return True

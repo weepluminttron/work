@@ -538,6 +538,7 @@ async function runChat(text){
     if (!result) return;
     addMsg(result.reply, 'bot');
     if (result.options) renderOptions(result.options);
+    refreshConvs();
   } catch (e) {
     typing.remove();
     addMsg('❌ 网络错误：' + e.message, 'bot');
@@ -994,6 +995,18 @@ async function openConversation(cid){
     });
     renderConvList(convsCache);
     scrollToBottom();
+  } catch(e){}
+}
+
+async function refreshConvs(){
+  try {
+    const r = await fetch('/api/conversations');
+    const d = await r.json();
+    if (!d || !d.ok) return;
+    convsCache = d.conversations || [];
+    renderConvList(convsCache);
+    const cur = convsCache.find(c => c.id === currentConvId);
+    if (cur) $('#convTitle').textContent = cur.title;
   } catch(e){}
 }
 

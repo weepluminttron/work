@@ -100,6 +100,29 @@ def _finish_task(task_id: str, status: str, **kwargs):
         _task_results[task_id] = {"status": status, "ts": time.time(), **kwargs}
 
 
+def _auto_title_conversation(cid: str, conv: dict):
+    """根据对话内容生成简短标题（后台异步，不影响回复速度）"""
+    try:
+        from conversation_store import update_title
+        from llm_summary import llm_request
+        messages = conv.get("messages") or []
+        lines = []
+        for m in messages[-6:]:
+            role = "用户" if m.get("role") == "user" else "助手"
+            lines.append(f"{role}：{(m.get('text') or '')[:200]}")
+        prompt = (
+            "你是对话命名助手。请根据下面的对话内容，给这个学习对话起一个简短、贴切的标题。\n"
+            "要求：15 字以内，只输出标题本身，不要引号、不要解释、不要多余文字。\n\n"
+            "对话内容：\n" + "\n".join(lines)
+        )
+        resp = llm_request(prompt, timeout=30)
+        title = resp.strip().strip('"').strip("'").replace("\n", " ").strip()
+        if title and not title.startswith("❌"):
+            update_title(cid, title)
+    except Exception as e:
+        print(f"⚠️自动生成对话标题失败：{e}")
+
+
 def _run_task(task_id: str, text: str, conversation_id: str = None):
     """后台执行聊天指令；有会话ID时自动保存对话"""
     try:
@@ -140,8 +163,11 @@ def _run_task(task_id: str, text: str, conversation_id: str = None):
             reply_text, reply_options = reply, None
         if conversation_id and not text.startswith("/"):
             try:
-                from conversation_store import append_messages
+                from conversation_store import append_messages, get_conversation
                 append_messages(conversation_id, text, reply_text)
+                conv = get_conversation(conversation_id)
+                if conv and len(conv.get("messages") or []) >= 4 and not conv.get("auto_titled"):
+                    threading.Thread(target=_auto_title_conversation, args=(conversation_id, conv), daemon=True).start()
             except Exception as e:
                 print(f"⚠️保存对话失败：{e}")
         print(f"📱网页版回复完成（{len(reply_text)} 字）")
