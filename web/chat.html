@@ -224,6 +224,7 @@
     .market-search { width: 100%; }
   }
   .scroll-down { position: fixed; right: 18px; bottom: 92px; z-index: 30; width: 40px; height: 40px; border-radius: 50%; border: none; background: var(--primary); color: #fff; font-size: 18px; cursor: pointer; box-shadow: var(--shadow); }
+  .quiz-explain-hint { background: var(--primary-soft); color: var(--primary); font-size: 12px; padding: 7px 10px; border-radius: 8px; margin-bottom: 8px; }
   .new-chat-btn { margin: 10px 12px 6px; padding: 9px 12px; border: none; border-radius: 10px; background: linear-gradient(135deg, var(--primary), var(--primary-2)); color: #fff; font-size: 13px; font-weight: 600; cursor: pointer; }
   .side-main-nav { padding: 4px 10px; }
   .side-main { display: flex; align-items: center; gap: 8px; width: 100%; padding: 9px 12px; margin: 2px 0; border: none; background: transparent; color: var(--text); border-radius: 10px; font-size: 13.5px; cursor: pointer; transition: background .15s, color .15s; }
@@ -545,6 +546,7 @@ async function pollTask(taskId, hint){
 async function runChat(text){
   autoScroll = true;
   $('#scrollDown').classList.add('hidden');
+  if (!text.startsWith('/explain')) pendingExplainPick = null;
   addMsg(text, 'user');
   const hint = typingHint(text);
   const typing = addTyping(hint);
@@ -621,6 +623,10 @@ function renderOptions(options){
         openQuiz(o.payload.aid);
       } else if (o.payload && o.payload.step === 'run') {
         if (o.payload.autoQuiz) pendingQuizAid = o.payload.autoQuiz;
+        if (o.payload.cmd && o.payload.cmd.startsWith('/explain')){
+          const p = o.payload.cmd.split(/\s+/);
+          pendingExplainPick = p[2] ? parseInt(p[2], 10) : null;
+        }
         runChat(o.payload.cmd);
       } else {
         fetchOptions(o.payload);
@@ -635,6 +641,7 @@ function renderOptions(options){
 
 let quizState = null;
 let pendingQuizAid = null;
+let pendingExplainPick = null;
 
 function cleanQuestionText(text){
   let t = text || '';
@@ -689,6 +696,12 @@ function renderQuiz(st){
   head.className = 'quiz-head';
   head.innerHTML = '<span>📝 答题模式｜归档ID ' + st.aid + '</span><span class="quiz-progress">已答 ' + answered + '/' + total + '</span>';
   box.appendChild(head);
+  if (pendingExplainPick !== null){
+    const hint = document.createElement('div');
+    hint.className = 'quiz-explain-hint';
+    hint.textContent = '🤔 AI讲题模式：点击下方答题卡上的题号，即可选择要讲解的题目';
+    box.appendChild(hint);
+  }
 
   const qbox = document.createElement('div');
   qbox.className = 'quiz-q';
@@ -731,7 +744,16 @@ function renderQuiz(st){
     if (st.marked.includes(qq.no)) b.classList.add('marked');
     if (idx === st.current) b.classList.add('current');
     b.title = '第' + qq.no + '题';
-    b.addEventListener('click', () => { st.current = idx; renderQuiz(st); });
+    b.addEventListener('click', () => {
+      if (pendingExplainPick !== null){
+        const n = pendingExplainPick;
+        pendingExplainPick = null;
+        runChat(String(qq.no));
+      } else {
+        st.current = idx;
+        renderQuiz(st);
+      }
+    });
     sheet.appendChild(b);
   });
   box.appendChild(sheet);
