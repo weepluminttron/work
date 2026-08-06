@@ -174,6 +174,11 @@ def handle_goals(ctx):
     ctx.send_long_msg(ctx.receive_id, goals_text())
 
 
+def handle_video(ctx):
+    from study_service import video_cmd_text
+    ctx.send_long_msg(ctx.receive_id, video_cmd_text(ctx.content))
+
+
 def handle_goal(ctx):
     from study_service import goal_cmd_text
     ctx.send_long_msg(ctx.receive_id, goal_cmd_text(ctx.content))
@@ -275,6 +280,8 @@ PREFIX_HANDLERS = [
     ("/progress id", handle_progress),
     ("/report", handle_report),
     ("/goal", handle_goal),
+    ("/视频", handle_video),
+    ("/video", handle_video),
     ("/save", handle_save),
     ("/del", handle_del),
     ("/polish", handle_polish),

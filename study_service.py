@@ -26,6 +26,38 @@ def _archive_or_error(aid):
     return row, None
 
 
+def video_links_text(keyword: str, limit: int = 4) -> str:
+    """生成B站视频推荐文本（可点击链接）"""
+    from video_search import search_bilibili
+    videos = search_bilibili(keyword, limit)
+    lines = ["📺【B站视频推荐】"]
+    for v in videos[:limit + 1]:
+        lines.append(f"- [{v['title']}]({v['link']})")
+    return "\n".join(lines)
+
+
+def _with_videos(text: str, keyword: str) -> str:
+    try:
+        section = video_links_text(keyword, 4)
+    except Exception as e:
+        print(f"⚠️视频推荐生成失败：{e}")
+        return text
+    return text + "\n\n" + section
+
+
+def study_plan_and_videos_text(topic: str) -> str:
+    """自然语言请求：学习「主题」→ 简要方案 + B站视频链接"""
+    from llm_summary import llm_request
+    plan = llm_request(
+        f"为学习「{topic}」制定一个简要学习方案（3-6条，包含学习重点和步骤，200字以内）：",
+        timeout=60,
+    )
+    if plan.startswith("❌"):
+        plan = f"「{topic}」学习方案生成失败，先看看下面的视频资料吧。"
+    text = f"📚【{topic}】学习方案\n{plan}"
+    return _with_videos(text, topic)
+
+
 def plan_text(aid: int, days: int = 5, include_daily: bool = True) -> str:
     """生成学习计划；include_daily=True 时（飞书）附带每日任务拆解"""
     row, err = _archive_or_error(aid)
@@ -33,9 +65,12 @@ def plan_text(aid: int, days: int = 5, include_daily: bool = True) -> str:
         return err
     full_plan = generate_study_plan(row["file_text"], row["subject"])
     if not include_daily:
-        return f"📅【{row['subject']}】学习计划（周期约 {days} 天）\n\n{full_plan}\n\n💡需要每日任务请用 /daily id {aid} days {days}"
+        return _with_videos(
+            f"📅【{row['subject']}】学习计划（周期约 {days} 天）\n\n{full_plan}\n\n💡需要每日任务请用 /daily id {aid} days {days}",
+            row["subject"],
+        )
     daily = split_plan_to_daily_tasks(full_plan, row["subject"], days)
-    return f"""📅【{row['subject']}学习总方案】
+    result = f"""📅【{row['subject']}学习总方案】
 归档ID：{aid}
 文档名称：{row['filename']}
 周期：{days}天
@@ -46,6 +81,7 @@ def plan_text(aid: int, days: int = 5, include_daily: bool = True) -> str:
 ====📆每日细化任务清单====
 {daily}
 """
+    return _with_videos(result, row["subject"])
 
 
 def daily_text(aid: int, days: int = 5, daily_minutes: int = None) -> str:
@@ -58,11 +94,12 @@ def daily_text(aid: int, days: int = 5, daily_minutes: int = None) -> str:
     task_list = extract_task_list(daily)
     save_daily_tasks(aid, row["subject"], task_list)
     time_note = f"，每天约 {daily_minutes} 分钟" if daily_minutes else ""
-    return f"""📆【{row['subject']}】每日学习任务（归档ID {aid}｜{days}天{time_note}）
+    result = f"""📆【{row['subject']}】每日学习任务（归档ID {aid}｜{days}天{time_note}）
 {daily}
 💡打卡：/done id {aid} day 天数
 📊进度：/progress id {aid}
 """
+    return _with_videos(result, row["subject"])
 
 
 def cards_text(aid: int) -> str:
@@ -240,7 +277,15 @@ def goal_cmd_text(raw_cmd: str) -> str:
     from goal_store import create_goal
     milestones = generate_long_term_plan(parsed["subject"], parsed["start_level"], parsed["target_level"], parsed["years"])
     goal = create_goal(parsed["subject"], parsed["target_level"], parsed["start_level"], parsed["years"], milestones)
-    return format_goal_detail(goal)
+    return _with_videos(format_goal_detail(goal), parsed["subject"])
+
+
+def video_cmd_text(raw_cmd: str) -> str:
+    """视频搜索指令：/视频 德语语法"""
+    keyword = raw_cmd.removeprefix("/视频").removeprefix("/video").strip()
+    if not keyword:
+        return "📺 用法：/视频 关键词\n示例：/视频 德语语法"
+    return video_links_text(keyword, 5)
 
 
 def goals_text() -> str:

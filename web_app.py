@@ -244,6 +244,7 @@ HELP_TEXT = """📚 网页版学习助手指令：
 /clear              清空对话记忆（开始新话题）
 /goals              长期学习目标列表
 /goal 3年 德语 B2    创建长期目标（AI生成阶段规划）
+/视频 关键词          搜索B站视频链接（示例：/视频 德语语法）
 /cards id 3         把归档文档生成背诵卡片
 /test id 3          把归档文档生成自测题
 /plan id 3 [days 7]  生成完整学习计划
@@ -555,6 +556,17 @@ def _parse_aid(parts):
     return None
 
 
+def _extract_study_topic(text: str) -> str:
+    """从“我要学习德语语法，给我学习方案和视频链接”这类话里提取主题"""
+    import re
+    m = re.search(r"(?:学习|学)\s*([^，。,.!?！？\s]{1,15})(?:\s*(?:的)?(?:学习方案|学习计划|方案|计划|视频))?", text)
+    if m:
+        topic = m.group(1).strip()
+        if topic:
+            return topic
+    return ""
+
+
 def _do_submit(aid: int, raw_answers: str):
     """自动批改：客观题逐题比对，简答题用AI评分，错题统一进错题本"""
     from wrong_book import add_wrong_paper
@@ -738,6 +750,13 @@ def handle_web_command(text: str) -> str:
         from vector_kb import rag_answer
         from chat_memory import add_turn, get_history
         key = "web"
+        topic = _extract_study_topic(text)
+        if topic and ("视频" in text or ("学习" in text and ("方案" in text or "计划" in text))):
+            from study_service import study_plan_and_videos_text
+            reply = study_plan_and_videos_text(topic)
+            add_turn(key, "user", text)
+            add_turn(key, "assistant", reply)
+            return reply
         history = get_history(key)
         reply = rag_answer(text, history)
         add_turn(key, "user", text)
@@ -751,6 +770,10 @@ def handle_web_command(text: str) -> str:
         from chat_memory import clear_history
         removed = clear_history("web")
         return "✅ 已清空对话记忆，开始新话题" + (f"（清理 {removed} 条消息）" if removed else "")
+
+    if cmd in ("/video", "/视频"):
+        from study_service import video_cmd_text
+        return video_cmd_text(text)
 
     if cmd in ("/help", "/菜单", "/指令"):
         return HELP_TEXT
