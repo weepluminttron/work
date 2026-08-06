@@ -223,6 +223,7 @@
     .market-search-row { justify-content: stretch; }
     .market-search { width: 100%; }
   }
+  .scroll-down { position: fixed; right: 18px; bottom: 92px; z-index: 30; width: 40px; height: 40px; border-radius: 50%; border: none; background: var(--primary); color: #fff; font-size: 18px; cursor: pointer; box-shadow: var(--shadow); }
 </style>
 </head>
 <body>
@@ -269,6 +270,7 @@
       </header>
       <div id="themePanel" class="theme-panel hidden"></div>
       <main id="messages"></main>
+      <button id="scrollDown" class="scroll-down hidden" title="回到底部">↓</button>
       <div id="fileView" class="file-view hidden">
         <div class="file-view-head">
           <span>全部归档</span>
@@ -308,6 +310,31 @@
 </div>
 <script>
 const $ = s => document.querySelector(s);
+
+let autoScroll = true;
+
+function updateScrollDown(){
+  const m = $('#messages');
+  const dist = m.scrollHeight - m.scrollTop - m.clientHeight;
+  if (dist > 80){
+    $('#scrollDown').classList.remove('hidden');
+  } else {
+    $('#scrollDown').classList.add('hidden');
+  }
+}
+
+function scrollToBottom(){
+  if (autoScroll){
+    $('#messages').scrollTop = $('#messages').scrollHeight;
+    updateScrollDown();
+  }
+}
+
+function forceScrollToBottom(){
+  autoScroll = true;
+  $('#messages').scrollTop = $('#messages').scrollHeight;
+  updateScrollDown();
+}
 
 function showLogin(){ $('#login').classList.remove('hidden'); $('#app').classList.add('hidden'); }
 function showApp(){ $('#login').classList.add('hidden'); $('#app').classList.remove('hidden'); $('#input').focus(); }
@@ -410,7 +437,7 @@ function addMsg(text, who){
   else { b.textContent = text; }
   div.appendChild(b);
   $('#messages').appendChild(div);
-  $('#messages').scrollTop = $('#messages').scrollHeight;
+  scrollToBottom();
 }
 
 function addTyping(){
@@ -421,7 +448,7 @@ function addTyping(){
   b.textContent = '正在思考…';
   div.appendChild(b);
   $('#messages').appendChild(div);
-  $('#messages').scrollTop = $('#messages').scrollHeight;
+  scrollToBottom();
   return div;
 }
 
@@ -453,6 +480,8 @@ async function pollTask(taskId){
 }
 
 async function runChat(text){
+  autoScroll = true;
+  $('#scrollDown').classList.add('hidden');
   addMsg(text, 'user');
   const typing = addTyping();
   try {
@@ -529,7 +558,7 @@ function renderOptions(options){
   });
   div.appendChild(box);
   $('#messages').appendChild(div);
-  $('#messages').scrollTop = $('#messages').scrollHeight;
+  scrollToBottom();
 }
 
 let quizState = null;
@@ -553,6 +582,7 @@ function quizSave(st){
 
 function renderQuiz(st){
   quizState = st;
+  const isNew = !st.wrap;
   let wrap = st.wrap;
   if (!wrap){
     wrap = document.createElement('div');
@@ -655,7 +685,7 @@ function renderQuiz(st){
   box.appendChild(ctrl);
 
   wrap.appendChild(box);
-  $('#messages').scrollTop = $('#messages').scrollHeight;
+  if (isNew) scrollToBottom();
 }
 
 async function submitQuiz(st, box){
@@ -792,6 +822,7 @@ function switchTab(name){
   const footer = document.querySelector('footer');
   if (wbar) wbar.classList.toggle('hidden', !chat);
   if (footer) footer.classList.toggle('hidden', !chat);
+  if (!chat) $('#scrollDown').classList.add('hidden');
   if (files) loadFiles();
   if (market) loadMarket();
 }
@@ -1016,6 +1047,8 @@ function startOptions(next){
 }
 
 async function upload(){
+  autoScroll = true;
+  $('#scrollDown').classList.add('hidden');
   const input = $('#fileInput');
   const file = input.files[0];
   if (!file) return;
@@ -1074,6 +1107,18 @@ $('#marketSearch').addEventListener('input', (e) => {
   marketKw = e.target.value.trim().toLowerCase();
   if (marketData) renderMarket();
 });
+$('#messages').addEventListener('scroll', () => {
+  const m = $('#messages');
+  const dist = m.scrollHeight - m.scrollTop - m.clientHeight;
+  if (dist > 80){
+    autoScroll = false;
+    $('#scrollDown').classList.remove('hidden');
+  } else {
+    autoScroll = true;
+    $('#scrollDown').classList.add('hidden');
+  }
+});
+$('#scrollDown').addEventListener('click', () => forceScrollToBottom());
 document.addEventListener('click', (e) => {
   if (!e.target.closest('#themePanel') && !e.target.closest('#themeBtn')) $('#themePanel').classList.add('hidden');
 });
