@@ -1058,7 +1058,7 @@ def options():
             return jsonify({"ok": False, "error": "归档记录不存在，可能已被删除"})
         prompt = f"③ 选择「{row.get('filename', '')}」的学习模式："
         options_list = [
-            {"label": "📝 答题模式（推荐）", "payload": {"step": "run", "cmd": f"/test id {row['id']}"}},
+            {"label": "📝 答题模式（推荐）", "payload": {"step": "run", "cmd": f"/test id {row['id']}", "autoQuiz": row["id"]}},
             {"label": "📄 仅生成题目（不生成答案）", "payload": {"step": "run", "cmd": f"/test id {row['id']} 仅题目"}},
             {"label": "📕 错题本（不生成）", "payload": {"step": "run", "cmd": f"/wrong id {row['id']}"}},
             {"label": "❌ 取消，不生成", "payload": {"step": "back"}},

@@ -561,8 +561,14 @@ async function runChat(text){
     if (!d.ok || !d.task_id) { addMsg('❌ ' + (d.error || '发送失败'), 'bot'); return; }
     const result = await pollTask(d.task_id, hint);
     if (!result) return;
-    addMsg(result.reply, 'bot');
-    if (result.options) renderOptions(result.options);
+    const autoQuiz = pendingQuizAid;
+    pendingQuizAid = null;
+    if (!autoQuiz) addMsg(result.reply, 'bot');
+    if (result.options){
+      const opts = autoQuiz ? result.options.filter(o => !(o.payload && o.payload.step === 'quiz')) : result.options;
+      if (opts.length) renderOptions(opts);
+    }
+    if (autoQuiz) openQuiz(autoQuiz);
     refreshConvs();
   } catch (e) {
     removeTyping(typing);
@@ -614,6 +620,7 @@ function renderOptions(options){
       if (o.payload && o.payload.step === 'quiz') {
         openQuiz(o.payload.aid);
       } else if (o.payload && o.payload.step === 'run') {
+        if (o.payload.autoQuiz) pendingQuizAid = o.payload.autoQuiz;
         runChat(o.payload.cmd);
       } else {
         fetchOptions(o.payload);
@@ -627,6 +634,7 @@ function renderOptions(options){
 }
 
 let quizState = null;
+let pendingQuizAid = null;
 
 function cleanQuestionText(text){
   let t = text || '';
