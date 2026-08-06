@@ -37,6 +37,16 @@ app = Flask(__name__)
 app.secret_key = os.getenv("WEB_SECRET_KEY", "study-assistant-web-secret")
 # 网页版登录密码：在服务器 .env 中设置 WEB_PASSWORD；不设置则无需登录（仅建议自用）
 WEB_PASSWORD = os.getenv("WEB_PASSWORD", "")
+ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin")
+
+import user_context
+from user_auth import ensure_admin
+
+# 启动时确保管理员账号存在，并把旧版全局数据迁移到管理员名下
+admin_pwd = os.getenv("ADMIN_PASSWORD", "") or WEB_PASSWORD
+if admin_pwd:
+    ensure_admin(ADMIN_USERNAME, admin_pwd)
+user_context.migrate_legacy(ADMIN_USERNAME)
 
 
 @app.before_request
@@ -44,6 +54,8 @@ def _set_request_ctx():
     """每个请求生成日志ID并记录开始时间（对齐 Coze 的访问日志中间件）"""
     g.log_id = uuid.uuid4().hex[:12]
     g.start_time = time.time()
+    username = session.get("username") if session.get("auth") else None
+    user_context.set_current_user(username or "guest")
 
 
 @app.after_request
@@ -82,6 +94,17 @@ _web_pending_explain = {}
 # 待二级密码状态：重建知识库等危险操作需要确认
 _web_pending_admin = {}
 
+
+def _user_answers():
+    """当前用户的答案暂存"""
+    return _web_answers.setdefault(user_context.current_user(), {})
+
+
+def _user_papers():
+    """当前用户的试卷暂存"""
+    return _web_papers.setdefault(user_context.current_user(), {})
+
+
 # 后台任务：{task_id: {"status": "running"/"done"/"error", "reply": ..., "options": ..., "error": ..., "ts": ...}}
 _task_results = {}
 _task_lock = threading.Lock()
@@ -102,9 +125,10 @@ def _finish_task(task_id: str, status: str, **kwargs):
         _task_results[task_id] = {"status": status, "ts": time.time(), **kwargs}
 
 
-def _auto_title_conversation(cid: str, conv: dict):
+def _auto_title_conversation(cid: str, conv: dict, user: str = None):
     """根据对话内容生成简短标题（后台异步，不影响回复速度）"""
     try:
+        user_context.set_current_user(user)
         from conversation_store import update_title
         from llm_summary import llm_request
         messages = conv.get("messages") or []
@@ -125,29 +149,34 @@ def _auto_title_conversation(cid: str, conv: dict):
         print(f"⚠️自动生成对话标题失败：{e}")
 
 
-def _run_task(task_id: str, text: str, conversation_id: str = None):
+def _run_task(task_id: str, text: str, conversation_id: str = None, user: str = None):
     """后台执行聊天指令；有会话ID时自动保存对话"""
     try:
+        user_context.set_current_user(user)
+        u = user_context.current_user()
         if text.startswith("/"):
             # 任何新指令都会取消“待提交答案”状态
-            _web_pending_submit.clear()
-            _web_pending_explain.clear()
-            _web_pending_admin.clear()
+            _web_pending_submit.pop(u, None)
+            _web_pending_explain.pop(u, None)
+            _web_pending_admin.pop(u, None)
             reply = handle_web_command(text)
-        elif _web_pending_submit:
-            aid = _web_pending_submit.pop("aid", None)
+        elif _web_pending_submit.get(u):
+            pending = _web_pending_submit.get(u)
+            aid = pending.pop("aid", None)
+            if not pending:
+                _web_pending_submit.pop(u, None)
             reply = _do_submit(aid, text) if aid is not None else handle_web_command(text)
-        elif _web_pending_admin:
-            _web_pending_admin.pop("action", None)
+        elif _web_pending_admin.get(u):
+            _web_pending_admin.pop(u, None)
             from config import check_admin_password
             from study_service import rebuild_text
             if check_admin_password(text):
                 reply = rebuild_text()
             else:
                 reply = "❌ 二级密码错误，重建已取消"
-        elif _web_pending_explain:
+        elif _web_pending_explain.get(u):
             import re as _re
-            st = _web_pending_explain
+            st = _web_pending_explain.get(u)
             if st.get("mode") == "pick":
                 nums = [int(x) for x in _re.findall(r"\d+", text)]
                 if not nums:
@@ -161,11 +190,11 @@ def _run_task(task_id: str, text: str, conversation_id: str = None):
                         st["qno"] = nums[0]
                         st["history"] = [("讲解", parts_out[0])]
                     else:
-                        _web_pending_explain.clear()
+                        _web_pending_explain.pop(u, None)
             elif st.get("mode") == "followup":
                 reply = _followup_explain(st, text)
             else:
-                _web_pending_explain.clear()
+                _web_pending_explain.pop(u, None)
                 reply = handle_web_command(text)
         else:
             reply = handle_web_command(text)
@@ -179,7 +208,7 @@ def _run_task(task_id: str, text: str, conversation_id: str = None):
                 append_messages(conversation_id, text, reply_text)
                 conv = get_conversation(conversation_id)
                 if conv and len(conv.get("messages") or []) >= 4 and not conv.get("auto_titled"):
-                    threading.Thread(target=_auto_title_conversation, args=(conversation_id, conv), daemon=True).start()
+                    threading.Thread(target=_auto_title_conversation, args=(conversation_id, conv, u), daemon=True).start()
             except Exception as e:
                 print(f"⚠️保存对话失败：{e}")
         print(f"📱网页版回复完成（{len(reply_text)} 字）")
@@ -191,9 +220,10 @@ def _run_task(task_id: str, text: str, conversation_id: str = None):
         _finish_task(task_id, "error", error=f"处理失败：{e}")
 
 
-def _run_upload_task(task_id: str, filename: str, file_bytes: bytes):
+def _run_upload_task(task_id: str, filename: str, file_bytes: bytes, user: str = None):
     """后台处理文件上传归档"""
     try:
+        user_context.set_current_user(user)
         import file_parser
         supported, doc_text = file_parser.extract_file_text(filename, file_bytes)
         if not supported:
@@ -522,25 +552,57 @@ def icon():
 
 @app.route("/api/status")
 def status():
-    authed = session.get("auth", False) or not WEB_PASSWORD
-    return jsonify({"ok": True, "need_login": bool(WEB_PASSWORD), "authed": authed})
+    user = session.get("username")
+    role = session.get("role", "")
+    authed = bool(session.get("auth")) and bool(user)
+    return jsonify({
+        "ok": True,
+        "need_login": bool(WEB_PASSWORD),
+        "authed": authed,
+        "username": user,
+        "role": role,
+        "is_admin": role == "admin",
+    })
 
 
 @app.route("/api/login", methods=["POST"])
 def login():
     data = request.get_json(silent=True) or {}
-    if WEB_PASSWORD and data.get("password") != WEB_PASSWORD:
-        print("📱网页版登录失败：密码错误")
-        return jsonify({"ok": False, "error": "密码错误"}), 401
+    username = (data.get("username") or "").strip()
+    password = data.get("password") or ""
+    from user_auth import authenticate
+    user = authenticate(username, password) if username else None
+    # 兼容旧版：只填网页密码时按管理员登录
+    if not user and password and WEB_PASSWORD and password == WEB_PASSWORD:
+        user = {"username": ADMIN_USERNAME, "role": "admin"}
+    if not user:
+        print("📱网页版登录失败：用户名或密码错误")
+        return jsonify({"ok": False, "error": "用户名或密码错误"}), 401
     session["auth"] = True
-    print("📱网页版登录成功")
-    return jsonify({"ok": True})
+    session["username"] = user["username"]
+    session["role"] = user["role"]
+    print(f"📱网页版登录成功：{user['username']}（{user['role']}）")
+    return jsonify({"ok": True, "username": user["username"], "role": user["role"], "is_admin": user["role"] == "admin"})
+
+
+@app.route("/api/register", methods=["POST"])
+def register():
+    data = request.get_json(silent=True) or {}
+    username = (data.get("username") or "").strip()
+    password = data.get("password") or ""
+    from user_auth import register as _register
+    ok, msg = _register(username, password)
+    if not ok:
+        return jsonify({"ok": False, "error": msg}), 400
+    return jsonify({"ok": True, "msg": msg})
 
 
 @app.route("/api/logout", methods=["POST"])
 @login_required
 def logout():
     session.pop("auth", None)
+    session.pop("username", None)
+    session.pop("role", None)
     return jsonify({"ok": True})
 
 
@@ -570,7 +632,7 @@ def _extract_study_topic(text: str) -> str:
 def _do_submit(aid: int, raw_answers: str):
     """自动批改：客观题逐题比对，简答题用AI评分，错题统一进错题本"""
     from wrong_book import add_wrong_paper
-    paper = _web_papers.get(aid)
+    paper = _user_papers().get(aid)
     if not paper:
         return "请先通过「自测题」生成该归档的题目，再提交答案"
     result = grade_paper(paper, raw_answers)
@@ -602,7 +664,7 @@ def _explain_question(aid: int, qno: int) -> str:
     import json
     import re
     from wrong_book import split_numbered
-    paper = _web_papers.get(aid)
+    paper = _user_papers().get(aid)
     if not paper:
         return "请先通过「自测题」生成该归档的题目"
     q_map = {no: txt for no, txt in split_numbered(paper["q"])}
@@ -677,7 +739,7 @@ def _followup_explain(st: dict, question: str) -> str:
     from wrong_book import split_numbered
     aid = st.get("aid")
     qno = st.get("qno")
-    paper = _web_papers.get(aid)
+    paper = _user_papers().get(aid)
     q_map = {no: txt for no, txt in split_numbered(paper["q"])} if paper else {}
     q_text = q_map.get(qno, "")
     history = st.get("history") or []
@@ -749,7 +811,7 @@ def handle_web_command(text: str) -> str:
     if not text.startswith("/"):
         from vector_kb import rag_answer
         from chat_memory import add_turn, get_history
-        key = "web"
+        key = user_context.current_user()
         topic = _extract_study_topic(text)
         if topic and ("视频" in text or ("学习" in text and ("方案" in text or "计划" in text))):
             from study_service import study_plan_and_videos_text
@@ -809,10 +871,12 @@ def handle_web_command(text: str) -> str:
         q, a = generate_test_questions(row["file_text"], row["subject"], 20, with_answers=not only_questions)
         if only_questions:
             return q + f"\n\n💡需要答题/批改/讲题时，重新选择「答题模式」即可（会生成带答案版本）"
-        if len(_web_answers) >= 100:
-            _web_answers.pop(next(iter(_web_answers)))
-        _web_answers[aid] = a
-        _web_papers[aid] = {"q": q, "a": a, "subject": row["subject"], "keys": _extract_answer_keys(a)}
+        answers = _user_answers()
+        papers = _user_papers()
+        if len(answers) >= 100:
+            answers.pop(next(iter(answers)))
+        answers[aid] = a
+        papers[aid] = {"q": q, "a": a, "subject": row["subject"], "keys": _extract_answer_keys(a)}
         print(f"📱网页版已生成20道题并暂存答案：归档ID {aid}")
         return q + f"\n\n💡做完后点「✍️ 提交答案」，再直接输入答案（如 B,A,C,D）即可自动批改", [
             {"label": "📝 答题模式", "payload": {"step": "quiz", "aid": aid}},
@@ -825,12 +889,12 @@ def handle_web_command(text: str) -> str:
         aid = _parse_aid(parts)
         if aid is None:
             return "用法：/submit id 归档ID 你的答案\n示例：/submit id 3 B,A,C,D"
-        paper = _web_papers.get(aid)
+        paper = _user_papers().get(aid)
         if not paper:
             return "请先通过「自测题」生成该归档的题目，再提交答案"
         raw_answers = " ".join(parts[3:]).strip()
         if not raw_answers:
-            _web_pending_submit["aid"] = aid
+            _web_pending_submit[user_context.current_user()] = {"aid": aid}
             return "✍️ 请在输入框直接发送你的答案（如 B,A,C,D），我会自动批改。\n也支持：B A C D、BACD、1:B 2:A、第1题 B"
         return _do_submit(aid, raw_answers)
 
@@ -838,7 +902,7 @@ def handle_web_command(text: str) -> str:
         aid = _parse_aid(parts)
         if aid is None:
             return "用法：/explain id 归档ID [题号]\n示例：/explain id 3 1"
-        if aid not in _web_papers:
+        if aid not in _user_papers():
             return (
                 "🤔 需要先为该归档生成题目，才能讲题。",
                 [
@@ -852,19 +916,19 @@ def handle_web_command(text: str) -> str:
         elif len(parts) >= 3 and parts[2].isdigit():
             qno = int(parts[2])
         if qno is None:
-            _web_pending_explain = {"aid": aid, "mode": "pick"}
+            _web_pending_explain[user_context.current_user()] = {"aid": aid, "mode": "pick"}
             return "🤔 请发送要讲解的题号（如 1 或 1,3,5）"
         reply = _explain_question(aid, qno)
         if "没有找到" in reply:
             return reply
-        _web_pending_explain = {"aid": aid, "mode": "followup", "qno": qno, "history": [("讲解", reply)]}
+        _web_pending_explain[user_context.current_user()] = {"aid": aid, "mode": "followup", "qno": qno, "history": [("讲解", reply)]}
         return reply + "\n\n💬 还可以继续追问这道题，直接输入问题即可；发送其他指令则退出讲解"
 
     if cmd == "/answer":
         aid = _parse_aid(parts)
         if aid is None:
             return "用法：/answer id 归档ID"
-        ans = _web_answers.get(aid)
+        ans = _user_answers().get(aid)
         if not ans:
             return "暂无该归档的答案，请先通过「自测题」生成题目"
         return f"📖【参考答案】\n{ans}", [
@@ -1022,6 +1086,8 @@ def handle_web_command(text: str) -> str:
         return "该合并归档包含以下原文档：\n" + "\n".join(f"{i}. {name}" for i, name in enumerate(origins, 1))
 
     if cmd == "/rebuild":
+        if session.get("role") != "admin":
+            return "❌仅管理员可执行重建知识库"
         from study_service import rebuild_text
         from config import check_admin_password
         pwd = " ".join(parts[1:]).strip()
@@ -1029,7 +1095,7 @@ def handle_web_command(text: str) -> str:
             if not check_admin_password(pwd):
                 return "❌ 二级密码错误，重建已取消"
             return rebuild_text()
-        _web_pending_admin["action"] = "rebuild"
+        _web_pending_admin[user_context.current_user()] = {"action": "rebuild"}
         return "🔐 该操作需要二级密码确认：请在输入框发送密码，即可开始重建知识库（耗时较长）"
 
     return "未知指令，发送 /help 查看可用指令"
@@ -1047,7 +1113,7 @@ def chat():
     _prune_tasks()
     task_id = uuid.uuid4().hex[:12]
     _finish_task(task_id, "running")
-    threading.Thread(target=_run_task, args=(task_id, text, conversation_id), daemon=True).start()
+    threading.Thread(target=_run_task, args=(task_id, text, conversation_id, session.get("username")), daemon=True).start()
     return jsonify({"ok": True, "task_id": task_id, "status": "running"})
 
 
@@ -1220,7 +1286,7 @@ def quiz_data():
         aid = int(request.args.get("aid", ""))
     except ValueError:
         return jsonify({"ok": False, "error": "缺少归档ID"})
-    paper = _web_papers.get(aid)
+    paper = _user_papers().get(aid)
     if not paper:
         return jsonify({"ok": False, "error": "请先通过「自测题」生成该归档的题目"})
     from wrong_book import split_numbered
@@ -1265,7 +1331,7 @@ def quiz_submit():
         aid = int(data.get("aid"))
     except (TypeError, ValueError):
         return jsonify({"ok": False, "error": "缺少归档ID"})
-    paper = _web_papers.get(aid)
+    paper = _user_papers().get(aid)
     if not paper:
         return jsonify({"ok": False, "error": "请先通过「自测题」生成该归档的题目"})
     answers = data.get("answers") or {}
@@ -1295,7 +1361,7 @@ def upload():
     _prune_tasks()
     task_id = uuid.uuid4().hex[:12]
     _finish_task(task_id, "running")
-    threading.Thread(target=_run_upload_task, args=(task_id, filename, file_bytes), daemon=True).start()
+    threading.Thread(target=_run_upload_task, args=(task_id, filename, file_bytes, session.get("username")), daemon=True).start()
     return jsonify({"ok": True, "task_id": task_id, "status": "running"})
 
 

@@ -11,13 +11,7 @@ services:
       - .env
     environment:
       TZ: Asia/Shanghai
-      STUDY_DOCS_DIR: /app/data/study_docs
-      ARCHIVE_DB_PATH: /app/data/archive.db
-      MEMORY_DB_PATH: /app/data/memory_spaced_review.db
-      CHROMA_PATH: /app/data/chroma_study_kb
-      WRONG_BOOK_FILE: /app/data/wrong_book.json
-      QUIZ_RECORD_FILE: /app/data/quiz_records.json
-      TEST_CACHE_FILE: /app/data/test_record_cache.json
+      DATA_DIR: /app/data
     volumes:
       - study-data:/app/data
       - model-cache:/root/.cache

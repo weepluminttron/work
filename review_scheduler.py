@@ -7,51 +7,53 @@ from datetime import datetime, timedelta
 import requests
 from apscheduler.schedulers.background import BackgroundScheduler
 from config import MEMORY_DB_PATH, REVIEW_PUSH_HOUR, FEISHU_WEBHOOK
+import user_context
 
 DB_LOCK = threading.Lock()
 
-# 模块级复用连接，避免每次操作都新建连接
-_db_conn = None
+# 每个用户复用一条连接
+_db_conns = {}
 
 def get_db_conn():
-    """获取数据库连接（进程内复用一条连接），开启WAL + 超时，多线程安全"""
-    global _db_conn
-    if _db_conn is None:
-        conn = sqlite3.connect(MEMORY_DB_PATH, timeout=20.0, check_same_thread=False)
+    """获取当前用户的数据库连接（进程内按用户复用），开启WAL + 超时，多线程安全"""
+    path = user_context.scope("memory_spaced_review.db")
+    conn = _db_conns.get(path)
+    if conn is None:
+        conn = sqlite3.connect(path, timeout=20.0, check_same_thread=False)
         conn.execute("PRAGMA journal_mode=WAL;")
         conn.execute("PRAGMA synchronous=NORMAL;")
         conn.execute("PRAGMA wal_autocheckpoint = 1000;")
-        _db_conn = conn
-    return _db_conn
+        _db_conns[path] = conn
+        _init_schema(conn)
+    return conn
+
+def _init_schema(conn):
+    cur = conn.cursor()
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS study_progress (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        archive_id INTEGER,
+        subject TEXT,
+        day_no INTEGER,
+        task_content TEXT,
+        start_date TEXT,
+        complete_date TEXT,
+        finished INTEGER DEFAULT 0,
+        UNIQUE(archive_id, day_no)
+    )
+    """)
+    cur.execute("PRAGMA table_info(study_progress);")
+    columns = [row[1] for row in cur.fetchall()]
+    if "start_date" not in columns:
+        cur.execute("ALTER TABLE study_progress ADD COLUMN start_date TEXT")
+    cur.execute("UPDATE study_progress SET start_date = date('now') WHERE start_date IS NULL")
+    conn.commit()
 
 def init_memory_db():
     """初始化学习进度数据表"""
     with DB_LOCK:
         conn = get_db_conn()
-        cur = conn.cursor()
-
-        # 学习进度打卡表
-        cur.execute("""
-        CREATE TABLE IF NOT EXISTS study_progress (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            archive_id INTEGER,
-            subject TEXT,
-            day_no INTEGER,
-            task_content TEXT,
-            start_date TEXT,
-            complete_date TEXT,
-            finished INTEGER DEFAULT 0,
-            UNIQUE(archive_id, day_no)
-        )
-        """)
-
-        # 旧表自动补 start_date 字段，并把已有任务视为从今天开始
-        cur.execute("PRAGMA table_info(study_progress);")
-        columns = [row[1] for row in cur.fetchall()]
-        if "start_date" not in columns:
-            cur.execute("ALTER TABLE study_progress ADD COLUMN start_date TEXT")
-        cur.execute("UPDATE study_progress SET start_date = date('now') WHERE start_date IS NULL")
-
+        _init_schema(conn)
         conn.commit()
 
 # ===================== 打卡系统新增函数 =====================
@@ -347,6 +349,7 @@ def get_overall_stats() -> dict:
 def push_daily_tasks_to_feishu():
     """定时任务：每日早上推送今日待办学习任务"""
     try:
+        user_context.set_current_user(os.getenv("SCHEDULER_USER") or os.getenv("ADMIN_USERNAME", "default"))
         task_text = get_today_learning_tasks()
         webhook = FEISHU_WEBHOOK
 
@@ -383,6 +386,7 @@ def push_daily_tasks_to_feishu():
 def push_evening_reminder_to_feishu():
     """晚间督促：今天还有任务没完成时，推送提醒+鼓励"""
     try:
+        user_context.set_current_user(os.getenv("SCHEDULER_USER") or os.getenv("ADMIN_USERNAME", "default"))
         webhook = FEISHU_WEBHOOK
         if not webhook or webhook.startswith("在此处填入") or len(webhook) < 10:
             print("⚠️未配置FEISHU_WEBHOOK，跳过晚间提醒")

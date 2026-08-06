@@ -14,6 +14,7 @@ from file_parser import clean_document_text
 from concurrent.futures import ThreadPoolExecutor
 from flask import Flask, request, jsonify
 import config
+import user_context
 # ==========新增向量库导入【RAG知识库】==========
 from vector_kb import add_archive_to_kb, remove_archive_from_kb, rebuild_kb
 
@@ -462,6 +463,7 @@ from llm_summary import auto_extract_archive_info, ai_simplify_filename, format_
 def process_message_task(event_data):
     receive_id = ""
     try:
+        user_context.set_current_user(os.getenv("FEISHU_USER") or os.getenv("ADMIN_USERNAME", "default"))
         event = event_data.get("event", {})
         message = event.get("message", {})
         msg_type = message.get("message_type")
@@ -581,6 +583,7 @@ def task_future_callback(future):
 def handle_card_action(open_id: str, cmd: str):
     """处理互动卡片按钮点击，处理完成后再次发送菜单方便继续操作"""
     try:
+        user_context.set_current_user(os.getenv("FEISHU_USER") or os.getenv("ADMIN_USERNAME", "default"))
         if cmd == "help":
             send_long_msg(open_id, build_help_text())
         elif cmd == "archives":
@@ -634,6 +637,7 @@ def handle_card_action(open_id: str, cmd: str):
 
 def handle_card_action_event(data: dict):
     """解析卡片点击回调并异步执行"""
+    user_context.set_current_user(os.getenv("FEISHU_USER") or os.getenv("ADMIN_USERNAME", "default"))
     event = data.get("event", {})
     action = event.get("action", {})
     value = action.get("value", {}) or {}

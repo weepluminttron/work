@@ -10,18 +10,26 @@ CONVERSATIONS_FILE = os.getenv("CONVERSATIONS_FILE", "conversations.json")
 _lock = threading.Lock()
 
 
+def _current_file() -> str:
+    if os.path.isabs(CONVERSATIONS_FILE):
+        return CONVERSATIONS_FILE
+    import user_context
+    return user_context.scope(CONVERSATIONS_FILE)
+
+
 def _load() -> dict:
-    if not os.path.exists(CONVERSATIONS_FILE):
+    path = _current_file()
+    if not os.path.exists(path):
         return {}
     try:
-        with open(CONVERSATIONS_FILE, "r", encoding="utf-8") as f:
+        with open(path, "r", encoding="utf-8") as f:
             return json.load(f)
     except Exception:
         return {}
 
 
 def _save(data: dict):
-    with open(CONVERSATIONS_FILE, "w", encoding="utf-8") as f:
+    with open(_current_file(), "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 

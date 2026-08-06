@@ -77,6 +77,8 @@
   .login-card p { color: var(--text-2); font-size: 13px; margin-bottom: 18px; }
   .login-card input { width: 100%; border: 1px solid var(--border-2); border-radius: 10px; padding: 11px; font-size: 15px; margin-bottom: 12px; outline: none; background: var(--input-bg); color: var(--text); }
   .login-card button { width: 100%; background: linear-gradient(135deg, var(--primary), var(--primary-2)); color: #fff; border: none; border-radius: 10px; padding: 11px; font-size: 15px; cursor: pointer; }
+  .login-toggle { margin-top: 12px; font-size: 13px; color: var(--text-2); }
+  .login-toggle span { color: var(--primary); cursor: pointer; font-weight: 600; }
   .hidden { display: none !important; }
   #logout, #themeBtn { margin-left: auto; background: rgba(255, 255, 255, .2); border: none; color: #fff; border-radius: 12px; padding: 5px 10px; font-size: 12px; cursor: pointer; }
   #themeBtn { margin-left: 0; font-size: 15px; }
@@ -259,9 +261,11 @@
 <div id="login" class="login hidden">
   <div class="login-card">
     <h1>📚 学习助手</h1>
-    <p>输入访问密码开始使用</p>
+    <p id="loginHint">输入账号密码开始使用</p>
+    <input id="username" placeholder="用户名" autocomplete="username">
     <input id="password" type="password" placeholder="访问密码" autocomplete="current-password">
-    <button id="loginBtn">进入</button>
+    <button id="loginBtn">登 录</button>
+    <div class="login-toggle" id="loginToggle">没有账号？<span>注册一个</span></div>
   </div>
 </div>
 <div id="app" class="hidden">
@@ -353,6 +357,7 @@
 const $ = s => document.querySelector(s);
 
 let autoScroll = true;
+let currentUser = null;
 
 function updateScrollDown(){
   const m = $('#messages');
@@ -378,7 +383,13 @@ function forceScrollToBottom(){
 }
 
 function showLogin(){ $('#login').classList.remove('hidden'); $('#app').classList.add('hidden'); }
-function showApp(){ $('#login').classList.add('hidden'); $('#app').classList.remove('hidden'); $('#input').focus(); }
+function showApp(){
+  $('#login').classList.add('hidden');
+  $('#app').classList.remove('hidden');
+  const nameEl = document.querySelector('.user-name');
+  if (nameEl && currentUser) nameEl.textContent = currentUser.username || '我的学伴';
+  $('#input').focus();
+}
 
 function escapeHtml(s){
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -1259,30 +1270,69 @@ async function init(){
   try {
     const r = await fetch('/api/status');
     const s = await r.json();
-    if (s.need_login && !s.authed) showLogin(); else showApp();
+    currentUser = s || null;
+    if (s && s.need_login && !s.authed) showLogin(); else showApp();
   } catch (e) { showLogin(); }
   applyTheme(localStorage.getItem('ui_theme') || 'default');
-  loadFiles();
-  loadStats();
-  loadConversations();
+  if (currentUser && currentUser.authed){
+    loadFiles();
+    loadStats();
+    loadConversations();
+  }
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
 }
 
 $('#logout').addEventListener('click', async () => {
+  currentUser = null;
   currentConvId = null;
   $('#messages').innerHTML = '';
   await fetch('/api/logout', {method: 'POST'});
   showLogin();
+  renderSubNav();
+});
+
+let loginMode = 'login';
+$('#loginToggle').addEventListener('click', () => {
+  loginMode = loginMode === 'login' ? 'register' : 'login';
+  $('#loginBtn').textContent = loginMode === 'login' ? '登 录' : '注 册';
+  $('#loginHint').textContent = loginMode === 'login' ? '输入账号密码开始使用' : '注册新账号（普通用户）';
+  $('#loginToggle').innerHTML = loginMode === 'login' ? '没有账号？<span>注册一个</span>' : '已有账号？<span>去登录</span>';
 });
 
 $('#loginBtn').addEventListener('click', async () => {
+  const username = $('#username').value.trim();
+  const password = $('#password').value;
+  if (loginMode === 'register'){
+    const rr = await fetch('/api/register', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({username: username, password: password})
+    });
+    const rd = await safeJson(rr);
+    if (!rd || !rd.ok){ alert(rd && rd.error ? rd.error : '注册失败'); return; }
+    loginMode = 'login';
+    $('#loginBtn').textContent = '登 录';
+    $('#loginToggle').innerHTML = '没有账号？<span>注册一个</span>';
+    $('#loginHint').textContent = '输入账号密码开始使用';
+  }
   const r = await fetch('/api/login', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({password: $('#password').value})
+    body: JSON.stringify({username: username, password: password})
   });
-  if (r.ok) showApp(); else alert('密码错误');
+  const d = await safeJson(r);
+  if (r.ok && d && d.ok){
+    currentUser = {username: d.username, role: d.role, is_admin: d.is_admin};
+    showApp();
+    loadFiles();
+    loadStats();
+    loadConversations();
+    renderSubNav();
+  } else {
+    alert('用户名或密码错误');
+  }
 });
+$('#username').addEventListener('keydown', e => { if (e.key === 'Enter') $('#loginBtn').click(); });
 $('#password').addEventListener('keydown', e => { if (e.key === 'Enter') $('#loginBtn').click(); });
 $('#send').addEventListener('click', send);
 $('#input').addEventListener('keydown', e => { if (e.key === 'Enter') send(); });
@@ -1346,7 +1396,7 @@ const MENU = {
     {label: '📋 指令清单', cmd: '/help'},
     {label: '✍️ 文本润色', next: 'polish'},
     {label: '📺 视频搜索', cmd: '/视频'},
-    {label: '🔄 重建知识库', cmd: '/rebuild'},
+    {label: '🔄 重建知识库', cmd: '/rebuild', admin: true},
     {label: '🧹 清空对话记忆', cmd: '/clear'}
   ]
 };
@@ -1364,6 +1414,7 @@ function renderSubNav(){
     label.textContent = groupNames[group] || group;
     g.appendChild(label);
     MENU[group].forEach(item => {
+      if (item.admin && currentUser && !currentUser.is_admin) return;
       const b = document.createElement('button');
       b.textContent = item.label;
       b.addEventListener('click', () => {

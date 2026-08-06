@@ -7,7 +7,10 @@ from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 from pypdf import PdfReader
 import config
+import user_context
 from llm_summary import generate_knowledge_points, llm_request
+
+user_context.set_current_user(os.getenv("WATCHER_USER") or os.getenv("ADMIN_USERNAME", "default"))
 
 # 记录已经处理过的文件，避免重复触发
 processed_files = dict()  # {filepath: timestamp} 用于过期清理

@@ -9,18 +9,26 @@ MAX_TURNS = 6  # 保留最近 6 轮（12 条消息）
 _lock = threading.Lock()
 
 
+def _current_file() -> str:
+    if os.path.isabs(CHAT_MEMORY_FILE):
+        return CHAT_MEMORY_FILE
+    import user_context
+    return user_context.scope(CHAT_MEMORY_FILE)
+
+
 def _load() -> dict:
-    if not os.path.exists(CHAT_MEMORY_FILE):
+    path = _current_file()
+    if not os.path.exists(path):
         return {}
     try:
-        with open(CHAT_MEMORY_FILE, "r", encoding="utf-8") as f:
+        with open(path, "r", encoding="utf-8") as f:
             return json.load(f)
     except Exception:
         return {}
 
 
 def _save(data: dict):
-    with open(CHAT_MEMORY_FILE, "w", encoding="utf-8") as f:
+    with open(_current_file(), "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 

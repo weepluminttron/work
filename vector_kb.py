@@ -5,6 +5,7 @@ import re
 import requests
 import threading
 import os
+import user_context
 
 # ===================== 路径：向量库存放至云硬盘/data =====================
 CHROMA_PATH = os.getenv("CHROMA_PATH", "/data/chroma_study_kb")
@@ -24,12 +25,26 @@ _local_embedder = None
 _rebuilding = False
 _rebuild_lock = threading.Lock()
 
-# 初始化chroma
-chroma_client = chromadb.PersistentClient(path=CHROMA_PATH)
-collection = chroma_client.get_or_create_collection(
-    name=COLLECTION_NAME,
-    metadata={"hnsw:space": "cosine"}
-)
+# 每个用户独立的 Chroma 客户端与集合
+_chroma_clients = {}
+_collections = {}
+
+
+def _get_client():
+    u = user_context.current_user()
+    if u not in _chroma_clients:
+        _chroma_clients[u] = chromadb.PersistentClient(path=user_context.scope("chroma_study_kb"))
+    return _chroma_clients[u]
+
+
+def _get_collection():
+    u = user_context.current_user()
+    if u not in _collections:
+        _collections[u] = _get_client().get_or_create_collection(
+            name=COLLECTION_NAME,
+            metadata={"hnsw:space": "cosine"},
+        )
+    return _collections[u]
 
 
 def _get_local_embedder():
@@ -61,9 +76,8 @@ def _get_local_embedder():
 
 def _ensure_collection_dimension():
     """旧版向量库是硅基流动 bge-m3（1024维），本地模型是384维，维度不一致时自动重建空库"""
-    global collection
     try:
-        sample = collection.get(limit=1, include=["embeddings"])
+        sample = _get_collection().get(limit=1, include=["embeddings"])
         embeds = sample.get("embeddings")
         if embeds is None:
             embeds = []
@@ -72,10 +86,11 @@ def _ensure_collection_dimension():
         if embeds and len(embeds[0]) != EMBEDDING_DIM:
             print(f"⚠️检测到旧向量维度 {len(embeds[0])}，本地模型为 {EMBEDDING_DIM}，自动删除旧向量库")
             try:
-                chroma_client.delete_collection(COLLECTION_NAME)
+                _get_client().delete_collection(COLLECTION_NAME)
             except Exception:
                 pass
-            collection = chroma_client.get_or_create_collection(
+            u = user_context.current_user()
+            _collections[u] = _get_client().get_or_create_collection(
                 name=COLLECTION_NAME,
                 metadata={"hnsw:space": "cosine"}
             )
@@ -85,10 +100,9 @@ def _ensure_collection_dimension():
 
 def _ensure_ready():
     """确保向量库与本地模型一致；为空且有归档时自动重建"""
-    global collection
     _ensure_collection_dimension()
     try:
-        if collection.count() > 0:
+        if _get_collection().count() > 0:
             return
     except Exception:
         return
@@ -155,12 +169,12 @@ def get_query_embedding(query: str) -> list[float]:
 # 重建整个知识库（初始化使用）
 def rebuild_kb():
     print("🔄 重建本地知识库...")
-    global collection
     try:
-        chroma_client.delete_collection(COLLECTION_NAME)
+        _get_client().delete_collection(COLLECTION_NAME)
     except Exception:
         pass
-    collection = chroma_client.get_or_create_collection(
+    u = user_context.current_user()
+    _collections[u] = _get_client().get_or_create_collection(
         name=COLLECTION_NAME,
         metadata={"hnsw:space": "cosine"}
     )
@@ -192,7 +206,7 @@ def rebuild_kb():
             for _ in chunks
         ]
         embeds = get_embedding(chunks)
-        collection.upsert(
+        _get_collection().upsert(
             embeddings=embeds,
             documents=chunks,
             metadatas=metadatas,
@@ -221,18 +235,19 @@ def add_archive_to_kb(archive_id: int):
         for _ in chunks
     ]
     embeds = get_embedding(chunks)
-    collection.upsert(embeddings=embeds, documents=chunks, metadatas=metadatas, ids=ids)
+    _get_collection().upsert(embeddings=embeds, documents=chunks, metadatas=metadatas, ids=ids)
     print(f"📄归档ID {archive_id} 已加入向量知识库")
 
 # 删除指定归档对应的向量片段（配套delete_archive_file调用）
 def remove_archive_from_kb(archive_id: int):
     try:
-        all_items = collection.get(
+        coll = _get_collection()
+        all_items = coll.get(
             where={"archive_id": archive_id}
         )
         del_ids = all_items.get("ids", [])
         if del_ids:
-            collection.delete(ids=del_ids)
+            coll.delete(ids=del_ids)
             print(f"🗑️归档ID {archive_id} 向量数据已清理")
     except Exception as e:
         print(f"❌清理向量库失败 archive_id={archive_id}: {str(e)}")
@@ -242,7 +257,7 @@ def query_knowledge(query: str, top_k=4):
     try:
         _ensure_ready()
         query_emb = [get_query_embedding(query)]
-        res = collection.query(
+        res = _get_collection().query(
             query_embeddings=query_emb,
             n_results=top_k
         )

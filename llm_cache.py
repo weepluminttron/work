@@ -11,18 +11,26 @@ CACHE_TTL = 7 * 24 * 3600  # 缓存7天
 _lock = threading.Lock()
 
 
+def _current_file() -> str:
+    if os.path.isabs(LLM_CACHE_FILE):
+        return LLM_CACHE_FILE
+    import user_context
+    return user_context.scope(LLM_CACHE_FILE)
+
+
 def _load() -> dict:
-    if not os.path.exists(LLM_CACHE_FILE):
+    path = _current_file()
+    if not os.path.exists(path):
         return {}
     try:
-        with open(LLM_CACHE_FILE, "r", encoding="utf-8") as f:
+        with open(path, "r", encoding="utf-8") as f:
             return json.load(f)
     except Exception:
         return {}
 
 
 def _save(data: dict):
-    with open(LLM_CACHE_FILE, "w", encoding="utf-8") as f:
+    with open(_current_file(), "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 

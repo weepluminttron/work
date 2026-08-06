@@ -10,18 +10,26 @@ WRONG_BOOK_FILE = os.getenv("WRONG_BOOK_FILE", "wrong_book.json")
 _lock = threading.Lock()
 
 
+def _current_file() -> str:
+    if os.path.isabs(WRONG_BOOK_FILE):
+        return WRONG_BOOK_FILE
+    import user_context
+    return user_context.scope(WRONG_BOOK_FILE)
+
+
 def _load() -> dict:
-    if not os.path.exists(WRONG_BOOK_FILE):
+    path = _current_file()
+    if not os.path.exists(path):
         return {}
     try:
-        with open(WRONG_BOOK_FILE, "r", encoding="utf-8") as f:
+        with open(path, "r", encoding="utf-8") as f:
             return json.load(f)
     except Exception:
         return {}
 
 
 def _save(data: dict):
-    with open(WRONG_BOOK_FILE, "w", encoding="utf-8") as f:
+    with open(_current_file(), "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 

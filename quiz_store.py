@@ -9,18 +9,26 @@ QUIZ_RECORD_FILE = os.getenv("QUIZ_RECORD_FILE", "quiz_records.json")
 _lock = threading.Lock()
 
 
+def _current_file() -> str:
+    if os.path.isabs(QUIZ_RECORD_FILE):
+        return QUIZ_RECORD_FILE
+    import user_context
+    return user_context.scope(QUIZ_RECORD_FILE)
+
+
 def _load() -> dict:
-    if not os.path.exists(QUIZ_RECORD_FILE):
+    path = _current_file()
+    if not os.path.exists(path):
         return {}
     try:
-        with open(QUIZ_RECORD_FILE, "r", encoding="utf-8") as f:
+        with open(path, "r", encoding="utf-8") as f:
             return json.load(f)
     except Exception:
         return {}
 
 
 def _save(data: dict):
-    with open(QUIZ_RECORD_FILE, "w", encoding="utf-8") as f:
+    with open(_current_file(), "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 

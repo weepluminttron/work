@@ -3,23 +3,12 @@ import os
 import time
 from typing import Optional, List, Dict
 import config
+import user_context
 
-# 数据库连接封装，线程安全简易封装
-DB_FILE = config.ARCHIVE_DB_PATH
 
-def get_db_conn():
-    conn = sqlite3.connect(DB_FILE, timeout=20.0, check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    # 多线程并发时避免直接报 "database is locked"
-    conn.execute("PRAGMA busy_timeout=20000")
-    return conn
-
-def init_db():
-    """初始化归档数据表，自动兼容旧表，缺失字段自动新增（方案B核心）"""
-    conn = get_db_conn()
+def _init_schema(conn):
     cursor = conn.cursor()
 
-    # 1. 创建表（不存在才新建）
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS document_archive (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -33,7 +22,6 @@ def init_db():
     ''')
     conn.commit()
 
-    # 2. 检查表字段，缺少file_text自动添加（兼容已有旧数据库）
     cols = cursor.execute("PRAGMA table_info(document_archive);").fetchall()
     col_names = [c[1] for c in cols]
     if "file_text" not in col_names:
@@ -41,6 +29,21 @@ def init_db():
         cursor.execute("ALTER TABLE document_archive ADD COLUMN file_text TEXT;")
         conn.commit()
 
+
+def get_db_conn():
+    """每个用户独立的归档数据库"""
+    conn = sqlite3.connect(user_context.scope("archive.db"), timeout=20.0, check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    # 多线程并发时避免直接报 "database is locked"
+    conn.execute("PRAGMA busy_timeout=20000")
+    _init_schema(conn)
+    return conn
+
+
+def init_db():
+    """初始化归档数据表，自动兼容旧表，缺失字段自动新增（方案B核心）"""
+    conn = get_db_conn()
+    _init_schema(conn)
     conn.close()
     print("✅归档数据库初始化完成")
 
@@ -60,8 +63,8 @@ def archive_file(subject: str, keypoint: str, file_bytes: bytes, original_filena
     for c in bad_chars:
         safe_name = safe_name.replace(c, "_")
 
-    # 构建存储路径
-    subject_dir = os.path.join(config.BASE_DOC_DIR, subject)
+    # 构建存储路径（每个用户独立目录）
+    subject_dir = os.path.join(user_context.docs_dir(), subject)
     os.makedirs(subject_dir, exist_ok=True)
     save_full_path = os.path.join(subject_dir, safe_name)
 
