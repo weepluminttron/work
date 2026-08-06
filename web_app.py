@@ -231,6 +231,8 @@ HELP_TEXT = """📚 网页版学习助手指令：
 /report             学情诊断报告（连续打卡/分科进度/欠账建议）
 /wrong              错题本（查看/记录/清除做错的题）
 /clear              清空对话记忆（开始新话题）
+/goals              长期学习目标列表
+/goal 3年 德语 B2    创建长期目标（AI生成阶段规划）
 /cards id 3         把归档文档生成背诵卡片
 /test id 3          把归档文档生成自测题
 /plan id 3 [days 7]  生成完整学习计划
@@ -884,6 +886,14 @@ def handle_web_command(text: str) -> str:
     if cmd == "/report":
         from study_service import report_text
         return report_text()
+
+    if cmd == "/goals":
+        from study_service import goals_text
+        return goals_text()
+
+    if cmd == "/goal":
+        from study_service import goal_cmd_text
+        return goal_cmd_text(text)
 
     if cmd == "/wrong":
         from wrong_book import add_wrong_paper, clear_wrong, get_wrong, list_wrong

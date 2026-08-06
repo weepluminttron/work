@@ -150,6 +150,56 @@ def split_plan_to_daily_tasks(full_plan: str, subject: str, days: int = 5, daily
     resp = llm_request(prompt)
     return format_msg(resp)
 
+
+def generate_long_term_plan(subject: str, start_level: str, target_level: str, years: int) -> list:
+    """生成长期学习里程碑：返回 [{phase, name, months, focus, evaluation}, ...]"""
+    import json
+    import re
+    total_months = max(3, int(years) * 12)
+    prompt = f"""你是资深学习规划专家。请为「{subject}」制定一个{years}年的长期学习计划：从「{start_level}」达到「{target_level}」。
+只输出 JSON 数组，不要任何其他文字，格式如下：
+[{{"phase":1,"name":"阶段名称","months":6,"focus":"学习重点","evaluation":"阶段检验方式"}}]
+要求：
+1. 阶段数量 4-6 个，所有阶段 months 之和约等于 {total_months} 个月
+2. 难度循序渐进，前基础后进阶
+3. name 简洁（如 A1 基础入门），focus 具体可执行"""
+    resp = llm_request(prompt, timeout=60)
+    m = re.search(r"\[.*\]", resp, re.DOTALL)
+    if m:
+        try:
+            data = json.loads(m.group())
+            if isinstance(data, list) and data:
+                milestones = []
+                for i, item in enumerate(data[:6], start=1):
+                    if not isinstance(item, dict):
+                        continue
+                    milestones.append({
+                        "phase": int(item.get("phase", i)),
+                        "name": str(item.get("name", f"阶段{i}")),
+                        "months": int(item.get("months", 0) or 0),
+                        "focus": str(item.get("focus", "")),
+                        "evaluation": str(item.get("evaluation", "")),
+                        "done": False,
+                    })
+                if milestones:
+                    return milestones
+        except Exception:
+            pass
+    # 兜底：按年份均分 4 个阶段
+    per = max(1, total_months // 4)
+    names = ["基础入门", "进阶提升", "强化突破", "冲刺达标"]
+    return [
+        {
+            "phase": i + 1,
+            "name": names[i] if i < len(names) else f"阶段{i + 1}",
+            "months": per if i < 3 else max(1, total_months - per * 3),
+            "focus": "",
+            "evaluation": "",
+            "done": False,
+        }
+        for i in range(4)
+    ]
+
 def auto_extract_archive_info(pdf_text: str) -> dict:
     """AI识别文档科目和核心知识点（网页版/飞书版共用）"""
     import re

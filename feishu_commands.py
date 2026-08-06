@@ -169,6 +169,16 @@ def handle_report(ctx):
     ctx.send_long_msg(ctx.receive_id, report_text())
 
 
+def handle_goals(ctx):
+    from study_service import goals_text
+    ctx.send_long_msg(ctx.receive_id, goals_text())
+
+
+def handle_goal(ctx):
+    from study_service import goal_cmd_text
+    ctx.send_long_msg(ctx.receive_id, goal_cmd_text(ctx.content))
+
+
 def handle_save(ctx):
     parts = ctx.content.split(maxsplit=2)
     if len(parts) < 3:
@@ -244,6 +254,7 @@ EXACT_HANDLERS = {
     "/tip": handle_tip,
     "/clear": handle_clear,
     "/清空记忆": handle_clear,
+    "/goals": handle_goals,
 }
 
 PREFIX_HANDLERS = [
@@ -255,6 +266,7 @@ PREFIX_HANDLERS = [
     ("/done id", handle_done),
     ("/progress id", handle_progress),
     ("/report", handle_report),
+    ("/goal", handle_goal),
     ("/save", handle_save),
     ("/del", handle_del),
     ("/polish", handle_polish),

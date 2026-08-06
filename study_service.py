@@ -172,6 +172,91 @@ def rebuild_text() -> str:
         return f"❌重建知识库失败：{str(e)}"
 
 
+def parse_goal_cmd(raw_cmd: str):
+    """解析 /goal 3年 德语 B2 等指令，返回 {years, subject, start_level, target_level}"""
+    import re
+    body = raw_cmd.removeprefix("/goal").strip()
+    years = 3
+    m = re.search(r"(\d+)\s*年", body)
+    if m:
+        years = max(1, min(10, int(m.group(1))))
+        body = body.replace(m.group(0), " ").strip()
+    levels = re.findall(r"\b([A-C][12])\b", body.upper())
+    target_level = levels[-1] if levels else "B2"
+    start_level = levels[0] if len(levels) >= 2 else "零基础"
+    for lv in levels:
+        body = re.sub(r"\b" + lv + r"\b", " ", body, flags=re.IGNORECASE)
+    subject = re.sub(r"\s+", " ", body).strip()
+    if not subject:
+        return None
+    return {
+        "years": years,
+        "subject": subject,
+        "start_level": start_level,
+        "target_level": target_level,
+    }
+
+
+def format_goal_detail(goal: dict) -> str:
+    lines = [
+        f"🎯【长期目标】{goal.get('subject', '')} {goal.get('start_level', '')} → {goal.get('target_level', '')}（{goal.get('years', '')}年）",
+    ]
+    milestones = goal.get("milestones", []) or []
+    total_months = sum(m.get("months", 0) or 0 for m in milestones)
+    lines.append(f"🗓 总规划 {total_months} 个月，共 {len(milestones)} 个阶段：\n")
+    for m in milestones:
+        status = "✅" if m.get("done") else "⬜"
+        lines.append(f"{status} 阶段{m.get('phase')}｜{m.get('name', '')}｜{m.get('months', 0)}个月")
+        if m.get("focus"):
+            lines.append(f"   重点：{m['focus']}")
+        if m.get("evaluation"):
+            lines.append(f"   检验：{m['evaluation']}")
+    lines.append("\n💡完成一个阶段后发送 /goal done id 目标ID 阶段号 打卡")
+    return "\n".join(lines)
+
+
+def goal_cmd_text(raw_cmd: str) -> str:
+    """长期目标指令：/goal 3年 德语 B2 / /goal id 数字 / /goal done id 数字 阶段号"""
+    body = raw_cmd.removeprefix("/goal").strip()
+    parts = body.split()
+    if len(parts) >= 2 and parts[0].lower() == "id":
+        from goal_store import get_goal
+        goal = get_goal(parts[1])
+        if not goal:
+            return "❌找不到该长期目标"
+        return format_goal_detail(goal)
+    if len(parts) >= 4 and parts[0].lower() == "done" and parts[1].lower() == "id":
+        from goal_store import mark_phase_done
+        try:
+            phase_no = int(parts[3])
+        except ValueError:
+            return "用法：/goal done id 目标ID 阶段号"
+        ok = mark_phase_done(parts[2], phase_no)
+        return f"✅ 已标记阶段{phase_no}完成！" if ok else "❌未找到目标或阶段号"
+    parsed = parse_goal_cmd(raw_cmd)
+    if not parsed:
+        return "🎯 用法：/goal 3年 德语 B2\n示例：/goal 3年 德语 零基础 B2\n查看：/goal id 目标ID\n阶段打卡：/goal done id 目标ID 阶段号"
+    from llm_summary import generate_long_term_plan
+    from goal_store import create_goal
+    milestones = generate_long_term_plan(parsed["subject"], parsed["start_level"], parsed["target_level"], parsed["years"])
+    goal = create_goal(parsed["subject"], parsed["target_level"], parsed["start_level"], parsed["years"], milestones)
+    return format_goal_detail(goal)
+
+
+def goals_text() -> str:
+    from goal_store import list_goals
+    goals = list_goals()
+    if not goals:
+        return "🎯 还没有长期目标。\n创建：/goal 3年 德语 B2\n（左侧导航「长期目标」可随时查看）"
+    lines = ["🎯【长期学习目标】"]
+    for g in goals:
+        lines.append(
+            f"ID {g['id']}｜{g['subject']} {g['start_level']}→{g['target_level']}（{g['years']}年）｜阶段 {g['progress']}/{g['total']}"
+        )
+    lines.append("\n💡查看详情：/goal id 目标ID\n💡创建新目标：/goal 3年 德语 B2")
+    return "\n".join(lines)
+
+
 def grade_short_answers_text(short_items: list):
     """调用大模型批改简答题，返回 (点评文本, 判定为错的题号列表)"""
     import json

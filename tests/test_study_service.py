@@ -46,7 +46,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import review_scheduler
 from archive_db import init_db
 import study_service
-from study_service import delete_text, done_text, progress_text, report_text
+from study_service import delete_text, done_text, parse_goal_cmd, progress_text, report_text
 
 init_db()
 
@@ -86,6 +86,17 @@ class StudyServiceTest(unittest.TestCase):
 
     def test_delete_text_usage(self):
         self.assertIn("/del id", delete_text("/del \u4e71\u5199\u7684\u5185\u5bb9"))
+
+    def test_parse_goal_cmd(self):
+        r = parse_goal_cmd("/goal 3\u5e74 \u5fb7\u8bed B2")
+        self.assertEqual(r["years"], 3)
+        self.assertEqual(r["subject"], "\u5fb7\u8bed")
+        self.assertEqual(r["target_level"], "B2")
+        self.assertEqual(r["start_level"], "\u96f6\u57fa\u7840")
+        r2 = parse_goal_cmd("/goal 2\u5e74 \u82f1\u8bed A2 C1")
+        self.assertEqual(r2["start_level"], "A2")
+        self.assertEqual(r2["target_level"], "C1")
+        self.assertIsNone(parse_goal_cmd("/goal"))
 
     def test_grade_short_answers_text(self):
         def fake_llm(prompt, timeout=60):

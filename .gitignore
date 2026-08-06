@@ -13,6 +13,7 @@ quiz_records.json
 chat_memory.json
 conversations.json
 llm_cache.json
+goals.json
 study_docs/
 学习笔记/
 chroma_study_kb/
