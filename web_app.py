@@ -260,6 +260,116 @@ def files():
     return jsonify({"ok": True, "files": rows, "total_size": total, "count": len(rows)})
 
 
+MARKET_PACKAGES = [
+    {
+        "id": "pkg_german", "type": "package", "title": "德语入门冲刺",
+        "icon": "🇩🇪", "desc": "从零开始掌握德语基础，一个月搞定入门词汇与日常会话。",
+        "tags": ["语言", "入门"], "subject": "德语",
+        "skills": ["基础发音与字母", "高频词汇 800", "日常对话场景", "简单语法结构", "阅读理解入门"],
+    },
+    {
+        "id": "pkg_writing", "type": "package", "title": "英语学术写作",
+        "icon": "🇬🇧", "desc": "提升英语写作的句式、结构与论证逻辑，适合论文和考试作文。",
+        "tags": ["语言", "学术"], "subject": "英语",
+        "skills": ["句式升级技巧", "段落结构搭建", "论证逻辑训练", "润色与改写", "高频表达库"],
+    },
+    {
+        "id": "pkg_dsa", "type": "package", "title": "数据结构与算法",
+        "icon": "💻", "desc": "覆盖面试与考试高频考点，配合刷题与复盘形成完整训练闭环。",
+        "tags": ["编程", "考试"], "subject": "编程",
+        "skills": ["数组与链表", "栈与队列", "树与图", "排序与搜索", "动态规划", "面试题演练"],
+    },
+    {
+        "id": "pkg_cert", "type": "package", "title": "职业考证速成",
+        "icon": "📜", "desc": "高频考点 + 真题演练 + 错题复盘，为各类职业资格考试冲刺。",
+        "tags": ["职业", "考试"], "subject": "考证",
+        "skills": ["考纲拆解", "高频考点精讲", "真题演练", "错题复盘", "冲刺复习计划"],
+    },
+    {
+        "id": "pkg_prompt", "type": "package", "title": "AI 提示词工程",
+        "icon": "🤖", "desc": "学会用大模型高效解决问题：角色设定、结构化提示、迭代优化。",
+        "tags": ["AI", "职业"], "subject": "AI",
+        "skills": ["角色设定", "结构化提示词", "思维链引导", "结果评估", "提示词迭代"],
+    },
+    {
+        "id": "pkg_psych", "type": "package", "title": "心理学与高效学习",
+        "icon": "🧠", "desc": "理解认知原理与记忆曲线，把学习方法建立在科学基础上。",
+        "tags": ["人文", "入门"], "subject": "心理学",
+        "skills": ["认知原理", "学习动机", "记忆曲线", "情绪调节", "专注力训练"],
+    },
+]
+
+MARKET_DATASETS = [
+    {"id": "ds_vocab", "type": "dataset", "title": "德语高频词汇 500", "icon": "🔤", "price": "免费", "subject": "德语"},
+    {"id": "ds_essay", "type": "dataset", "title": "英语作文模板库", "icon": "📝", "price": "免费", "subject": "英语"},
+    {"id": "ds_interview", "type": "dataset", "title": "编程面试题集", "icon": "🧩", "price": "¥9.9", "subject": "编程"},
+    {"id": "ds_math", "type": "dataset", "title": "考研数学公式手册", "icon": "📐", "price": "免费", "subject": "数学"},
+    {"id": "ds_gk", "type": "dataset", "title": "公考行测题库", "icon": "🏛", "price": "¥19.9", "subject": "考证"},
+    {"id": "ds_history", "type": "dataset", "title": "世界史大事年表", "icon": "🌍", "price": "免费", "subject": "历史"},
+]
+
+
+def _market_items_with_added(items, existing_filenames):
+    out = []
+    for it in items:
+        fname = f"【技能包】{it['title']}.txt"
+        out.append({**it, "added": fname in existing_filenames})
+    return out
+
+
+@app.route("/api/market", methods=["GET"])
+@login_required
+def market():
+    from archive_db import get_all_archive_items
+    existing = {it.get("filename") for it in get_all_archive_items()}
+    return jsonify({
+        "ok": True,
+        "packages": _market_items_with_added(MARKET_PACKAGES, existing),
+        "datasets": _market_items_with_added(MARKET_DATASETS, existing),
+    })
+
+
+@app.route("/api/market_add", methods=["POST"])
+@login_required
+def market_add():
+    data = request.get_json(silent=True) or {}
+    item_id = data.get("id")
+    item = next((x for x in MARKET_PACKAGES + MARKET_DATASETS if x["id"] == item_id), None)
+    if not item:
+        return jsonify({"ok": False, "error": "未找到该技能包"})
+    from archive_db import get_all_archive_items, archive_file
+    existing = {it.get("filename") for it in get_all_archive_items()}
+    fname = f"【技能包】{item['title']}.txt"
+    if fname in existing:
+        return jsonify({"ok": True, "added": True, "already": True})
+    skills_text = "\n".join(f"- {s}" for s in item.get("skills", []))
+    doc_text = (
+        f"# {item['title']}\n\n{item.get('desc', '')}\n\n"
+        f"## 包含技能\n{skills_text}\n\n"
+        "## 学习建议\n按技能顺序逐个掌握，每个技能安排 1-2 天，配合自测题、背诵卡片和每日任务巩固。"
+    )
+    save_path, new_aid = archive_file(
+        item.get("subject", "技能包"),
+        item["title"],
+        doc_text.encode("utf-8"),
+        fname,
+        doc_text,
+    )
+    from vector_kb import add_archive_to_kb
+    try:
+        add_archive_to_kb(new_aid)
+    except Exception as e:
+        print(f"⚠️技能包入库知识库失败（归档已保存）：{e}")
+    return jsonify({"ok": True, "added": True, "aid": new_aid})
+
+
+@app.route("/api/stats", methods=["GET"])
+@login_required
+def stats():
+    from review_scheduler import get_overall_stats
+    return jsonify({"ok": True, **get_overall_stats()})
+
+
 @app.route("/")
 def index():
     return send_file(os.path.join(WEB_DIR, "chat.html"))

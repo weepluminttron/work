@@ -168,6 +168,61 @@
     .file-row { grid-template-columns: 2fr 1fr 1.2fr; }
     .file-row > span:nth-child(4) { display: none; }
   }
+
+  /* ===== 技能市场 ===== */
+  .sidebar-foot { padding: 0; }
+  .progress-block { padding: 12px 16px 8px; }
+  .progress-label { display: flex; justify-content: space-between; font-size: 12px; color: var(--text-2); margin-bottom: 6px; }
+  .progress-track { height: 8px; border-radius: 4px; background: var(--code-bg); overflow: hidden; }
+  .progress-bar { height: 100%; width: 0; border-radius: 4px; background: linear-gradient(135deg, var(--primary), var(--primary-2)); transition: width .5s; }
+  .upgrade-banner { margin: 10px 12px; padding: 8px 12px; border-radius: 12px; background: linear-gradient(135deg, var(--primary), var(--primary-2)); color: #fff; font-size: 12px; font-weight: 600; }
+  .file-view-head { display: flex; justify-content: space-between; align-items: center; max-width: 860px; width: 100%; margin: 0 auto 10px; font-size: 13px; font-weight: 600; color: var(--text-2); }
+  .file-view-head .storage-pill { margin: 0; }
+  .market-view { flex: 1; overflow-y: auto; padding: 18px 16px; }
+  .market-container { max-width: 1200px; width: 100%; margin: 0 auto; }
+  .market-search-row { display: flex; justify-content: flex-end; margin-bottom: 14px; }
+  .market-search { display: flex; align-items: center; gap: 8px; background: var(--input-bg); border: 1px solid var(--border-2); border-radius: 20px; padding: 8px 14px; width: 260px; }
+  .market-search input { border: none; outline: none; flex: 1; background: transparent; color: var(--text); font-size: 13px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; background: var(--card); border: 1px solid var(--border); border-radius: 20px; padding: 6px 14px; font-size: 13px; color: var(--text-2); cursor: pointer; transition: all .15s; }
+  .chip.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+  .section-head { display: flex; justify-content: space-between; align-items: baseline; margin: 26px 0 14px; }
+  .section-title { font-size: 17px; font-weight: 700; color: var(--text); }
+  .section-sub { font-size: 12px; color: var(--text-3); margin-left: 8px; }
+  .more-link { font-size: 13px; color: var(--primary); cursor: pointer; }
+  .pkg-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .pkg-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); padding: 16px; display: flex; flex-direction: column; gap: 10px; transition: transform .15s, box-shadow .15s; }
+  .pkg-card:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(0, 0, 0, .10); }
+  .pkg-top { display: flex; gap: 12px; align-items: flex-start; }
+  .pkg-icon { width: 48px; height: 48px; border-radius: 12px; background: linear-gradient(135deg, var(--primary), var(--primary-2)); display: flex; align-items: center; justify-content: center; font-size: 22px; flex: 0 0 48px; }
+  .pkg-info { flex: 1; min-width: 0; }
+  .pkg-title { font-size: 15px; font-weight: 700; color: var(--text); }
+  .pkg-desc { font-size: 12.5px; color: var(--text-2); margin-top: 2px; }
+  .pkg-tags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+  .pkg-tag { font-size: 11px; background: var(--primary-soft); color: var(--primary); border-radius: 10px; padding: 2px 8px; }
+  .add-btn { align-self: flex-start; padding: 6px 14px; border: none; border-radius: 14px; background: linear-gradient(135deg, var(--primary), var(--primary-2)); color: #fff; font-size: 13px; cursor: pointer; }
+  .add-btn.added { background: var(--primary-soft); color: var(--primary); cursor: default; }
+  .skills-box { border-top: 1px dashed var(--border); padding-top: 8px; }
+  .skills-list { display: flex; flex-wrap: wrap; gap: 6px; }
+  .skill-item { font-size: 12px; background: var(--code-bg); color: var(--text-2); border-radius: 8px; padding: 3px 8px; }
+  .skills-more { font-size: 12px; color: var(--primary); cursor: pointer; margin-top: 6px; display: inline-block; }
+  .dataset-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .dataset-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 12px; display: flex; align-items: center; gap: 10px; box-shadow: var(--shadow); }
+  .dataset-icon { width: 36px; height: 36px; border-radius: 10px; background: var(--primary-soft); display: flex; align-items: center; justify-content: center; font-size: 18px; flex: 0 0 36px; }
+  .dataset-info { flex: 1; min-width: 0; }
+  .dataset-title { font-size: 13px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .dataset-price { font-size: 12px; color: var(--primary); }
+  .dataset-btn { font-size: 12px; padding: 4px 10px; border: none; border-radius: 12px; background: var(--primary-soft); color: var(--primary); cursor: pointer; }
+  .dataset-btn.added { opacity: .6; cursor: default; }
+  @media (max-width: 900px) {
+    .pkg-grid { grid-template-columns: 1fr; }
+    .dataset-grid { grid-template-columns: 1fr 1fr; }
+  }
+  @media (max-width: 600px) {
+    .dataset-grid { grid-template-columns: 1fr; }
+    .market-search-row { justify-content: stretch; }
+    .market-search { width: 100%; }
+  }
 </style>
 </head>
 <body>
@@ -186,7 +241,11 @@
       <div class="sidebar-search"><input id="sidebarSearch" placeholder="搜索归档…"></div>
       <div class="sidebar-nav" id="sidebarNav"></div>
       <div class="sidebar-foot">
-        <div class="storage-pill" id="storagePill">📦 计算中…</div>
+        <div class="progress-block">
+          <div class="progress-label"><span>学习积分</span><span id="pointsText">0</span></div>
+          <div class="progress-track"><div class="progress-bar" id="progressBar"></div></div>
+        </div>
+        <div class="upgrade-banner">🔓 升级 Pro 解锁全部技能包</div>
         <div class="user-row">
           <span class="avatar">🧑‍🎓</span>
           <div class="user-info">
@@ -201,6 +260,7 @@
         <div class="tabs">
           <button id="tabChat" class="tab active">💬 对话</button>
           <button id="tabFiles" class="tab">🗂 归档文件</button>
+          <button id="tabMarket" class="tab">🛍 技能市场</button>
         </div>
         <div class="header-right">
           <button id="themeBtn" title="切换界面风格">🎨</button>
@@ -210,12 +270,25 @@
       <div id="themePanel" class="theme-panel hidden"></div>
       <main id="messages"></main>
       <div id="fileView" class="file-view hidden">
+        <div class="file-view-head">
+          <span>全部归档</span>
+          <span class="storage-pill" id="storagePill">📦 计算中…</span>
+        </div>
         <div class="file-table">
           <div class="file-row file-head">
             <span>名称</span><span>科目</span><span>大小</span><span>修改时间</span><span>操作</span>
           </div>
           <div id="fileList"></div>
           <div id="fileEmpty" class="file-empty hidden">📂 暂无归档，去「资料 → 上传文件」添加吧</div>
+        </div>
+      </div>
+      <div id="marketView" class="market-view hidden">
+        <div class="market-container">
+          <div class="market-search-row">
+            <div class="market-search">🔍 <input id="marketSearch" placeholder="搜索技能包 / 数据集…"></div>
+          </div>
+          <div class="chips" id="marketChips"></div>
+          <div id="marketSections"></div>
         </div>
       </div>
       <div id="submenu" class="submenu hidden"></div>
@@ -707,15 +780,20 @@ let fileSearchKw = '';
 
 function switchTab(name){
   const chat = name === 'chat';
+  const files = name === 'files';
+  const market = name === 'market';
   $('#tabChat').classList.toggle('active', chat);
-  $('#tabFiles').classList.toggle('active', !chat);
+  $('#tabFiles').classList.toggle('active', files);
+  $('#tabMarket').classList.toggle('active', market);
   $('#messages').classList.toggle('hidden', !chat);
-  $('#fileView').classList.toggle('hidden', chat);
+  $('#fileView').classList.toggle('hidden', !files);
+  $('#marketView').classList.toggle('hidden', !market);
   const wbar = document.querySelector('.wbar');
   const footer = document.querySelector('footer');
   if (wbar) wbar.classList.toggle('hidden', !chat);
   if (footer) footer.classList.toggle('hidden', !chat);
-  if (!chat) loadFiles();
+  if (files) loadFiles();
+  if (market) loadMarket();
 }
 
 async function loadFiles(){
@@ -763,6 +841,157 @@ async function loadFiles(){
   } catch(e){}
 }
 
+function loadStats(){
+  fetch('/api/stats').then(r => r.json()).then(d => {
+    if (!d || !d.ok) return;
+    $('#pointsText').textContent = d.points || 0;
+    const pct = d.total ? Math.round((d.finished / d.total) * 100) : 0;
+    $('#progressBar').style.width = pct + '%';
+  }).catch(() => {});
+}
+
+let marketData = null;
+let marketFilter = '';
+let marketKw = '';
+
+async function loadMarket(){
+  try {
+    const r = await fetch('/api/market');
+    const d = await r.json();
+    if (!d || !d.ok) return;
+    marketData = d;
+    renderMarketChips();
+    renderMarket();
+  } catch(e){}
+}
+
+function renderMarketChips(){
+  const chipBox = $('#marketChips');
+  chipBox.innerHTML = '';
+  const tags = ['全部'];
+  (marketData.packages || []).concat(marketData.datasets || []).forEach(it => {
+    (it.tags || []).forEach(t => { if (tags.indexOf(t) < 0) tags.push(t); });
+  });
+  tags.forEach(t => {
+    const b = document.createElement('button');
+    b.className = 'chip' + (marketFilter === t ? ' active' : '');
+    b.textContent = t;
+    b.addEventListener('click', () => { marketFilter = t; renderMarketChips(); renderMarket(); });
+    chipBox.appendChild(b);
+  });
+}
+
+function renderMarket(){
+  const box = $('#marketSections');
+  box.innerHTML = '';
+  const kw = marketKw;
+  const match = it => {
+    if (kw && (it.title + ' ' + (it.desc || '') + ' ' + (it.tags || []).join(' ')).toLowerCase().indexOf(kw) < 0) return false;
+    if (marketFilter && marketFilter !== '全部' && (it.tags || []).indexOf(marketFilter) < 0) return false;
+    return true;
+  };
+  const pkgs = (marketData.packages || []).filter(match);
+  const dss = (marketData.datasets || []).filter(match);
+  if (pkgs.length){
+    box.appendChild(sectionHead('行业技能包', '按主题打包的学习路径，一键添加为归档', pkgs.length));
+    const grid = document.createElement('div');
+    grid.className = 'pkg-grid';
+    pkgs.forEach(p => grid.appendChild(pkgCard(p)));
+    box.appendChild(grid);
+  }
+  if (dss.length){
+    box.appendChild(sectionHead('学习数据集', '精选资料与题库', dss.length));
+    const grid = document.createElement('div');
+    grid.className = 'dataset-grid';
+    dss.forEach(d => grid.appendChild(datasetCard(d)));
+    box.appendChild(grid);
+  }
+  if (!pkgs.length && !dss.length){
+    const empty = document.createElement('div');
+    empty.className = 'file-empty';
+    empty.textContent = '🔍 没有匹配的技能包，换个关键词试试';
+    box.appendChild(empty);
+  }
+}
+
+function sectionHead(title, sub, count){
+  const head = document.createElement('div');
+  head.className = 'section-head';
+  head.innerHTML = '<div><span class="section-title">' + title + '</span><span class="section-sub">' + sub + ' · ' + count + ' 项</span></div><span class="more-link">查看更多 ›</span>';
+  return head;
+}
+
+function pkgCard(p){
+  const card = document.createElement('div');
+  card.className = 'pkg-card';
+  const tags = (p.tags || []).map(t => '<span class="pkg-tag">' + t + '</span>').join('');
+  const skills = p.skills || [];
+  const visible = skills.slice(0, 3).map(s => '<span class="skill-item">' + escapeHtml(s) + '</span>').join('');
+  const hidden = skills.slice(3).map(s => '<span class="skill-item">' + escapeHtml(s) + '</span>').join('');
+  card.innerHTML =
+    '<div class="pkg-top">' +
+      '<span class="pkg-icon">' + p.icon + '</span>' +
+      '<div class="pkg-info">' +
+        '<div class="pkg-title">' + escapeHtml(p.title) + '</div>' +
+        '<div class="pkg-desc">' + escapeHtml(p.desc || '') + '</div>' +
+        '<div class="pkg-tags">' + tags + '</div>' +
+      '</div>' +
+      '<button class="add-btn' + (p.added ? ' added' : '') + '" data-act="add">' + (p.added ? '✅ 已添加' : '➕ 添加') + '</button>' +
+    '</div>' +
+    '<div class="skills-box">' +
+      '<div class="skills-list">' + visible + (hidden ? '<span class="skills-more" data-act="more">展开全部 ' + skills.length + ' 项 ›</span>' : '') + '</div>' +
+      '<div class="skills-list hidden" data-role="extra">' + hidden + '</div>' +
+    '</div>';
+  const addBtn = card.querySelector('[data-act="add"]');
+  addBtn.addEventListener('click', () => addMarketItem(p, addBtn));
+  const more = card.querySelector('[data-act="more"]');
+  if (more){
+    more.addEventListener('click', () => {
+      card.querySelector('[data-role="extra"]').classList.remove('hidden');
+      more.classList.add('hidden');
+    });
+  }
+  return card;
+}
+
+function datasetCard(d){
+  const card = document.createElement('div');
+  card.className = 'dataset-card';
+  card.innerHTML =
+    '<span class="dataset-icon">' + d.icon + '</span>' +
+    '<div class="dataset-info"><div class="dataset-title">' + escapeHtml(d.title) + '</div><div class="dataset-price">' + escapeHtml(d.price) + '</div></div>' +
+    '<button class="dataset-btn' + (d.added ? ' added' : '') + '" data-act="add">' + (d.added ? '✅ 已加' : '添加') + '</button>';
+  const btn = card.querySelector('[data-act="add"]');
+  btn.addEventListener('click', () => addMarketItem(d, btn));
+  return card;
+}
+
+async function addMarketItem(item, btn){
+  if (item.added) return;
+  btn.disabled = true;
+  try {
+    const r = await fetch('/api/market_add', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({id: item.id})
+    });
+    const d = await r.json();
+    if (d && d.ok){
+      item.added = true;
+      btn.textContent = item.type === 'dataset' ? '✅ 已加' : '✅ 已添加';
+      btn.classList.add('added');
+      addMsg('✅ 已添加「' + item.title + '」，可在「归档文件」中查看并学习', 'bot');
+      switchTab('chat');
+    } else {
+      btn.disabled = false;
+      addMsg('❌ ' + ((d && d.error) || '添加失败'), 'bot');
+    }
+  } catch(e){
+    btn.disabled = false;
+    addMsg('❌ 网络错误：' + e.message, 'bot');
+  }
+}
+
 function startOptions(next){
   fetchOptions({next: next});
 }
@@ -796,6 +1025,7 @@ async function init(){
   } catch (e) { showLogin(); }
   applyTheme(localStorage.getItem('ui_theme') || 'default');
   loadFiles();
+  loadStats();
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
 }
 
@@ -816,9 +1046,14 @@ $('#themeBtn').addEventListener('click', (e) => {
 });
 $('#tabChat').addEventListener('click', () => switchTab('chat'));
 $('#tabFiles').addEventListener('click', () => switchTab('files'));
+$('#tabMarket').addEventListener('click', () => switchTab('market'));
 $('#sidebarSearch').addEventListener('input', (e) => {
   fileSearchKw = e.target.value.trim().toLowerCase();
   switchTab('files');
+});
+$('#marketSearch').addEventListener('input', (e) => {
+  marketKw = e.target.value.trim().toLowerCase();
+  if (marketData) renderMarket();
 });
 document.addEventListener('click', (e) => {
   if (!e.target.closest('#themePanel') && !e.target.closest('#themeBtn')) $('#themePanel').classList.add('hidden');

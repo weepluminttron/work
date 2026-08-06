@@ -326,6 +326,23 @@ def get_study_report() -> str:
     lines.append(_encourage_text(rate))
     return "\n".join(lines)
 
+
+def get_overall_stats() -> dict:
+    """总体学习统计（侧栏积分进度条用）"""
+    init_memory_db()
+    with DB_LOCK:
+        conn = get_db_conn()
+        cur = conn.cursor()
+        cur.execute("SELECT COUNT(*), COALESCE(SUM(finished), 0) FROM study_progress")
+        total, finished = cur.fetchone()
+    total = total or 0
+    finished = finished or 0
+    return {
+        "finished": int(finished),
+        "total": int(total),
+        "points": int(finished) * 10,
+    }
+
 # ===================== 晨间推送：今日学习任务 =====================
 def push_daily_tasks_to_feishu():
     """定时任务：每日早上推送今日待办学习任务"""
