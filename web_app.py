@@ -79,6 +79,8 @@ _web_papers = {}
 _web_pending_submit = {}
 # 待讲解状态：点「请教AI讲题」后，下一条消息为题号或追问
 _web_pending_explain = {}
+# 待二级密码状态：重建知识库等危险操作需要确认
+_web_pending_admin = {}
 
 # 后台任务：{task_id: {"status": "running"/"done"/"error", "reply": ..., "options": ..., "error": ..., "ts": ...}}
 _task_results = {}
@@ -130,10 +132,19 @@ def _run_task(task_id: str, text: str, conversation_id: str = None):
             # 任何新指令都会取消“待提交答案”状态
             _web_pending_submit.clear()
             _web_pending_explain.clear()
+            _web_pending_admin.clear()
             reply = handle_web_command(text)
         elif _web_pending_submit:
             aid = _web_pending_submit.pop("aid", None)
             reply = _do_submit(aid, text) if aid is not None else handle_web_command(text)
+        elif _web_pending_admin:
+            _web_pending_admin.pop("action", None)
+            from config import check_admin_password
+            from study_service import rebuild_text
+            if check_admin_password(text):
+                reply = rebuild_text()
+            else:
+                reply = "❌ 二级密码错误，重建已取消"
         elif _web_pending_explain:
             import re as _re
             st = _web_pending_explain
@@ -245,7 +256,7 @@ HELP_TEXT = """📚 网页版学习助手指令：
 /polish 德语 文本    润色德语/英语文本（或 /polish id 3）
 /merge 科目名        把同科目的所有文档合并为一条归档
 /mergeinfo id 3      查看合并归档包含哪些原文档
-/rebuild            重建知识库
+/rebuild            重建知识库（需二级密码确认）
 /help               显示本清单
 
 直接输入问题，会自动检索你的归档资料回答。
@@ -989,7 +1000,14 @@ def handle_web_command(text: str) -> str:
 
     if cmd == "/rebuild":
         from study_service import rebuild_text
-        return rebuild_text()
+        from config import check_admin_password
+        pwd = " ".join(parts[1:]).strip()
+        if pwd:
+            if not check_admin_password(pwd):
+                return "❌ 二级密码错误，重建已取消"
+            return rebuild_text()
+        _web_pending_admin["action"] = "rebuild"
+        return "🔐 该操作需要二级密码确认：请在输入框发送密码，即可开始重建知识库（耗时较长）"
 
     return "未知指令，发送 /help 查看可用指令"
 

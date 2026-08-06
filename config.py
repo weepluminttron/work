@@ -19,6 +19,19 @@ def _load_local_env():
 
 _load_local_env()
 
+# ===================== 网页版与二级密码 =====================
+WEB_PASSWORD = os.getenv("WEB_PASSWORD", "")
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "")
+
+
+def check_admin_password(pwd: str) -> bool:
+    """二级密码校验：配置了 ADMIN_PASSWORD 用它；没配置则回退到网页登录密码"""
+    if not pwd:
+        return False
+    if ADMIN_PASSWORD:
+        return pwd == ADMIN_PASSWORD
+    return bool(WEB_PASSWORD) and pwd == WEB_PASSWORD
+
 # ===================== 本地文件监控配置（文件夹监听模块） =====================
 WATCH_FOLDER = os.path.expanduser("~/Downloads/课程资料")
 NOTE_SAVE_DIR = os.path.expanduser("~/study_notes")

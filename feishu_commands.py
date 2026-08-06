@@ -212,6 +212,14 @@ def handle_polish(ctx):
 
 
 def handle_rebuild_kb(ctx):
+    from config import check_admin_password
+    pwd = ctx.content.removeprefix("/rebuild_kb").strip()
+    if not pwd:
+        ctx.send_msg(ctx.receive_id, "🔐 该操作需要二级密码：请发送 /rebuild_kb 二级密码")
+        return
+    if not check_admin_password(pwd):
+        ctx.send_msg(ctx.receive_id, "❌ 二级密码错误，重建已取消")
+        return
     ctx.send_msg(ctx.receive_id, "🔄开始重建全部向量知识库，耗时较长，请耐心等待...")
     from study_service import rebuild_text
     ctx.send_msg(ctx.receive_id, rebuild_text())
