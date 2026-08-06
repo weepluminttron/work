@@ -936,14 +936,20 @@ function pkgCard(p){
         '<div class="pkg-desc">' + escapeHtml(p.desc || '') + '</div>' +
         '<div class="pkg-tags">' + tags + '</div>' +
       '</div>' +
-      '<button class="add-btn' + (p.added ? ' added' : '') + '" data-act="add">' + (p.added ? '✅ 已添加' : '➕ 添加') + '</button>' +
+      '<button class="add-btn' + (p.added ? ' added' : '') + '" data-act="add">' + (p.added ? '✅ 去使用' : '➕ 添加') + '</button>' +
     '</div>' +
     '<div class="skills-box">' +
       '<div class="skills-list">' + visible + (hidden ? '<span class="skills-more" data-act="more">展开全部 ' + skills.length + ' 项 ›</span>' : '') + '</div>' +
       '<div class="skills-list hidden" data-role="extra">' + hidden + '</div>' +
     '</div>';
   const addBtn = card.querySelector('[data-act="add"]');
-  addBtn.addEventListener('click', () => addMarketItem(p, addBtn));
+  addBtn.addEventListener('click', () => {
+    if (p.added){
+      useMarketItem(p);
+    } else {
+      addMarketItem(p, addBtn);
+    }
+  });
   const more = card.querySelector('[data-act="more"]');
   if (more){
     more.addEventListener('click', () => {
@@ -960,9 +966,15 @@ function datasetCard(d){
   card.innerHTML =
     '<span class="dataset-icon">' + d.icon + '</span>' +
     '<div class="dataset-info"><div class="dataset-title">' + escapeHtml(d.title) + '</div><div class="dataset-price">' + escapeHtml(d.price) + '</div></div>' +
-    '<button class="dataset-btn' + (d.added ? ' added' : '') + '" data-act="add">' + (d.added ? '✅ 已加' : '添加') + '</button>';
+    '<button class="dataset-btn' + (d.added ? ' added' : '') + '" data-act="add">' + (d.added ? '✅ 去使用' : '添加') + '</button>';
   const btn = card.querySelector('[data-act="add"]');
-  btn.addEventListener('click', () => addMarketItem(d, btn));
+  btn.addEventListener('click', () => {
+    if (d.added){
+      useMarketItem(d);
+    } else {
+      addMarketItem(d, btn);
+    }
+  });
   return card;
 }
 
@@ -978,10 +990,12 @@ async function addMarketItem(item, btn){
     const d = await r.json();
     if (d && d.ok){
       item.added = true;
-      btn.textContent = item.type === 'dataset' ? '✅ 已加' : '✅ 已添加';
+      item.aid = d.aid || item.aid;
+      btn.textContent = '✅ 去使用';
       btn.classList.add('added');
-      addMsg('✅ 已添加「' + item.title + '」，可在「归档文件」中查看并学习', 'bot');
+      addMsg('✅ 已添加「' + item.title + '」，现在就可以开始学习了', 'bot');
       switchTab('chat');
+      fetchOptions({step: 'use', aid: item.aid});
     } else {
       btn.disabled = false;
       addMsg('❌ ' + ((d && d.error) || '添加失败'), 'bot');
@@ -990,6 +1004,11 @@ async function addMarketItem(item, btn){
     btn.disabled = false;
     addMsg('❌ 网络错误：' + e.message, 'bot');
   }
+}
+
+function useMarketItem(item){
+  switchTab('chat');
+  fetchOptions({step: 'use', aid: item.aid});
 }
 
 function startOptions(next){

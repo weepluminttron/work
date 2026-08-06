@@ -309,11 +309,13 @@ MARKET_DATASETS = [
 ]
 
 
-def _market_items_with_added(items, existing_filenames):
+def _market_items_with_added(items, existing_items):
+    by_name = {it.get("filename"): it.get("id") for it in existing_items}
     out = []
     for it in items:
         fname = f"【技能包】{it['title']}.txt"
-        out.append({**it, "added": fname in existing_filenames})
+        aid = by_name.get(fname)
+        out.append({**it, "added": aid is not None, "aid": aid})
     return out
 
 
@@ -321,11 +323,11 @@ def _market_items_with_added(items, existing_filenames):
 @login_required
 def market():
     from archive_db import get_all_archive_items
-    existing = {it.get("filename") for it in get_all_archive_items()}
+    existing_items = get_all_archive_items()
     return jsonify({
         "ok": True,
-        "packages": _market_items_with_added(MARKET_PACKAGES, existing),
-        "datasets": _market_items_with_added(MARKET_DATASETS, existing),
+        "packages": _market_items_with_added(MARKET_PACKAGES, existing_items),
+        "datasets": _market_items_with_added(MARKET_DATASETS, existing_items),
     })
 
 
@@ -948,6 +950,21 @@ def options():
             {"label": "❌ 取消，不生成", "payload": {"step": "back"}},
         ]
         return jsonify({"ok": True, "prompt": prompt, "options": options_list})
+
+    if step == "use":
+        row = _get_archive(data.get("aid"))
+        if not row:
+            return jsonify({"ok": False, "error": "归档记录不存在，可能已被删除"})
+        subject = row.get("subject", "")
+        options_list = [
+            {"label": "📝 自测题", "payload": {"step": "mode", "aid": row["id"]}},
+            {"label": "📇 背诵卡片", "payload": {"step": "run", "cmd": f"/cards id {row['id']}"}},
+            {"label": "📅 学习计划", "payload": {"step": "days", "next": "plan", "subject": subject, "aid": row["id"]}},
+            {"label": "📆 每日任务", "payload": {"step": "days", "next": "daily", "subject": subject, "aid": row["id"]}},
+            {"label": "✅ 打卡", "payload": {"step": "days", "next": "done", "subject": subject, "aid": row["id"]}},
+            {"label": "📕 错题本", "payload": {"step": "run", "cmd": f"/wrong id {row['id']}"}},
+        ]
+        return jsonify({"ok": True, "prompt": f"📋 使用「{row.get('filename', '')}」：", "options": options_list})
 
     if step == "back":
         return jsonify({"ok": True, "prompt": "已取消，没有生成任何题目。", "options": []})
