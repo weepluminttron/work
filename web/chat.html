@@ -4,7 +4,11 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <meta name="theme-color" content="#4a7dff">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="manifest" href="/manifest.json">
+<link rel="apple-touch-icon" href="/icon-192.png">
 <title>学习助手</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
@@ -304,6 +308,7 @@
           <button id="tabMarket" class="tab">🛍 技能市场</button>
         </div>
         <div class="header-right">
+          <button id="installBtn" class="new-chat-icon hidden" title="安装到手机/桌面">📲</button>
           <button id="newChatMobile" class="new-chat-icon" title="新建对话">＋</button>
           <button id="themeBtn" title="切换界面风格">🎨</button>
           <button id="logout">退出</button>
@@ -1339,6 +1344,23 @@ $('#input').addEventListener('keydown', e => { if (e.key === 'Enter') send(); })
 $('#themeBtn').addEventListener('click', (e) => {
   e.stopPropagation();
   toggleThemePanel();
+});
+let deferredPrompt = null;
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredPrompt = e;
+  $('#installBtn').classList.remove('hidden');
+});
+$('#installBtn').addEventListener('click', async () => {
+  if (!deferredPrompt) return;
+  deferredPrompt.prompt();
+  await deferredPrompt.userChoice;
+  deferredPrompt = null;
+  $('#installBtn').classList.add('hidden');
+});
+window.addEventListener('appinstalled', () => {
+  deferredPrompt = null;
+  $('#installBtn').classList.add('hidden');
 });
 $('#tabChat').addEventListener('click', () => switchTab('chat'));
 $('#tabFiles').addEventListener('click', () => switchTab('files'));

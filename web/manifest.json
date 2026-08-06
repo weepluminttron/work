@@ -1,11 +1,17 @@
 {
   "name": "学习助手",
   "short_name": "学习助手",
+  "description": "AI 智能学习伴学：归档资料、自测题、背诵卡片、学习计划、视频推荐",
+  "lang": "zh-CN",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
+  "orientation": "portrait",
   "background_color": "#f5f7fb",
   "theme_color": "#4a7dff",
   "icons": [
-    {"src": "/icon.svg", "sizes": "any", "type": "image/svg+xml"}
+    {"src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
+    {"src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"},
+    {"src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}
   ]
 }

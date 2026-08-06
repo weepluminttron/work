@@ -550,6 +550,16 @@ def icon():
     return send_file(os.path.join(WEB_DIR, "icon.svg"), mimetype="image/svg+xml")
 
 
+@app.route("/icon-192.png")
+def icon_192():
+    return send_file(os.path.join(WEB_DIR, "icon-192.png"), mimetype="image/png")
+
+
+@app.route("/icon-512.png")
+def icon_512():
+    return send_file(os.path.join(WEB_DIR, "icon-512.png"), mimetype="image/png")
+
+
 @app.route("/api/status")
 def status():
     user = session.get("username")
