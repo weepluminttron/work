@@ -136,6 +136,38 @@
     .sidebar { display: flex; }
     .wbar { display: none; }
   }
+
+  /* ===== B端管理后台风格 ===== */
+  .sidebar { width: 240px; }
+  .sidebar-search { padding: 0 12px 8px; }
+  .sidebar-search input { width: 100%; border: 1px solid var(--border-2); border-radius: 10px; padding: 8px 12px; font-size: 13px; outline: none; background: var(--input-bg); color: var(--text); }
+  .sidebar-search input:focus { border-color: var(--primary); }
+  .storage-pill { display: flex; align-items: center; gap: 8px; margin: 10px 12px; padding: 8px 12px; border-radius: 20px; background: var(--primary-soft); color: var(--primary); font-size: 12px; font-weight: 600; }
+  .user-row { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-top: 1px solid var(--border); }
+  .avatar { width: 34px; height: 34px; border-radius: 50%; background: linear-gradient(135deg, var(--primary), var(--primary-2)); display: inline-flex; align-items: center; justify-content: center; font-size: 16px; }
+  .user-info { line-height: 1.3; }
+  .user-name { font-size: 13px; font-weight: 600; color: var(--text); }
+  .user-status { font-size: 11px; color: #2e9e6b; }
+  header { justify-content: space-between; }
+  .tabs { display: flex; gap: 6px; }
+  .tab { padding: 8px 14px; border-radius: 10px; border: none; background: transparent; color: var(--text-2); font-size: 14px; cursor: pointer; transition: background .15s, color .15s; }
+  .tab.active { background: var(--primary-soft); color: var(--primary); font-weight: 600; }
+  .header-right { display: flex; gap: 8px; align-items: center; }
+  .file-view { flex: 1; overflow-y: auto; padding: 18px 16px; }
+  .file-table { max-width: 860px; width: 100%; margin: 0 auto; background: var(--card); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; box-shadow: var(--shadow); }
+  .file-row { display: grid; grid-template-columns: 3fr 1.2fr 1fr 1.4fr 1.8fr; gap: 8px; align-items: center; padding: 10px 14px; border-bottom: 1px solid var(--border); font-size: 13px; color: var(--text); }
+  .file-row:last-child { border-bottom: none; }
+  .file-head { background: var(--primary-soft); color: var(--text-2); font-weight: 600; font-size: 12px; }
+  .file-name { display: flex; align-items: center; gap: 8px; font-weight: 600; word-break: break-all; }
+  .file-icon { width: 30px; height: 30px; border-radius: 8px; background: var(--primary-soft); display: inline-flex; align-items: center; justify-content: center; font-size: 14px; flex: 0 0 30px; }
+  .file-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+  .file-actions button { padding: 4px 8px; border: none; border-radius: 8px; background: var(--primary-soft); color: var(--primary); font-size: 12px; cursor: pointer; }
+  .file-actions button.danger { background: #ffe9e9; color: #e5484d; }
+  .file-empty { padding: 40px 16px; text-align: center; color: var(--text-3); font-size: 13px; }
+  @media (max-width: 700px) {
+    .file-row { grid-template-columns: 2fr 1fr 1.2fr; }
+    .file-row > span:nth-child(4) { display: none; }
+  }
 </style>
 </head>
 <body>
@@ -151,13 +183,41 @@
   <div class="layout">
     <aside class="sidebar">
       <div class="sidebar-head"><span class="logo">📚</span><span>学习助手</span></div>
+      <div class="sidebar-search"><input id="sidebarSearch" placeholder="搜索归档…"></div>
       <div class="sidebar-nav" id="sidebarNav"></div>
-      <div class="sidebar-foot">AI 智能学伴</div>
+      <div class="sidebar-foot">
+        <div class="storage-pill" id="storagePill">📦 计算中…</div>
+        <div class="user-row">
+          <span class="avatar">🧑‍🎓</span>
+          <div class="user-info">
+            <div class="user-name">我的学伴</div>
+            <div class="user-status">● 在线</div>
+          </div>
+        </div>
+      </div>
     </aside>
     <div class="main-col">
-      <header>📚 学习助手 <button id="themeBtn" title="切换界面风格">🎨</button><button id="logout">退出</button></header>
+      <header>
+        <div class="tabs">
+          <button id="tabChat" class="tab active">💬 对话</button>
+          <button id="tabFiles" class="tab">🗂 归档文件</button>
+        </div>
+        <div class="header-right">
+          <button id="themeBtn" title="切换界面风格">🎨</button>
+          <button id="logout">退出</button>
+        </div>
+      </header>
       <div id="themePanel" class="theme-panel hidden"></div>
       <main id="messages"></main>
+      <div id="fileView" class="file-view hidden">
+        <div class="file-table">
+          <div class="file-row file-head">
+            <span>名称</span><span>科目</span><span>大小</span><span>修改时间</span><span>操作</span>
+          </div>
+          <div id="fileList"></div>
+          <div id="fileEmpty" class="file-empty hidden">📂 暂无归档，去「资料 → 上传文件」添加吧</div>
+        </div>
+      </div>
       <div id="submenu" class="submenu hidden"></div>
       <div class="wbar">
         <button class="wbtn" data-group="study">📚 学习</button>
@@ -618,6 +678,91 @@ function toggleThemePanel(){
   $('#themePanel').classList.toggle('hidden');
 }
 
+function fmtSize(n){
+  if (!n) return '0 B';
+  if (n < 1024) return n + ' B';
+  if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+  if (n < 1024 * 1024 * 1024) return (n / 1024 / 1024).toFixed(1) + ' MB';
+  return (n / 1024 / 1024 / 1024).toFixed(2) + ' GB';
+}
+
+function fmtTime(ts){
+  if (!ts) return '-';
+  const d = new Date(ts * 1000);
+  const p = n => (n < 10 ? '0' + n : '' + n);
+  return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+}
+
+function fileIcon(name){
+  const n = (name || '').toLowerCase();
+  if (n.endsWith('.pdf')) return '📕';
+  if (n.endsWith('.docx') || n.endsWith('.doc')) return '📘';
+  if (n.endsWith('.pptx')) return '📙';
+  if (/\.(jpg|jpeg|png|bmp|webp)$/.test(n)) return '🖼️';
+  if (n.startsWith('【合并】')) return '🗂️';
+  return '📄';
+}
+
+let fileSearchKw = '';
+
+function switchTab(name){
+  const chat = name === 'chat';
+  $('#tabChat').classList.toggle('active', chat);
+  $('#tabFiles').classList.toggle('active', !chat);
+  $('#messages').classList.toggle('hidden', !chat);
+  $('#fileView').classList.toggle('hidden', chat);
+  const wbar = document.querySelector('.wbar');
+  const footer = document.querySelector('footer');
+  if (wbar) wbar.classList.toggle('hidden', !chat);
+  if (footer) footer.classList.toggle('hidden', !chat);
+  if (!chat) loadFiles();
+}
+
+async function loadFiles(){
+  try {
+    const r = await fetch('/api/files');
+    const d = await r.json();
+    if (!d || !d.ok) return;
+    $('#storagePill').textContent = '📦 ' + fmtSize(d.total_size || 0) + ' / 50 GB';
+    const list = $('#fileList');
+    list.innerHTML = '';
+    const files = d.files || [];
+    $('#fileEmpty').classList.toggle('hidden', files.length > 0);
+    files.forEach(f => {
+      const row = document.createElement('div');
+      row.className = 'file-row';
+      row.innerHTML =
+        '<span class="file-name"><span class="file-icon">' + fileIcon(f.filename) + '</span><span>' + escapeHtml(f.filename) + '</span></span>' +
+        '<span>' + escapeHtml(f.subject) + '</span>' +
+        '<span>' + fmtSize(f.size) + '</span>' +
+        '<span>' + fmtTime(f.create_ts) + '</span>' +
+        '<span class="file-actions">' +
+          '<button data-act="cards">📇 卡片</button>' +
+          '<button data-act="test">📝 自测</button>' +
+          '<button data-act="del" class="danger">🗑 删除</button>' +
+        '</span>';
+      row.querySelector('[data-act="cards"]').addEventListener('click', () => { switchTab('chat'); runChat('/cards id ' + f.id); });
+      row.querySelector('[data-act="test"]').addEventListener('click', () => { switchTab('chat'); runChat('/test id ' + f.id); });
+      row.querySelector('[data-act="del"]').addEventListener('click', () => {
+        if (window.confirm('确认删除归档ID ' + f.id + '（' + f.filename + '）？删除后不可恢复')) {
+          switchTab('chat');
+          runChat('/del id ' + f.id);
+        }
+      });
+      list.appendChild(row);
+    });
+    const kw = fileSearchKw;
+    const rows = document.querySelectorAll('#fileList .file-row');
+    let shown = 0;
+    rows.forEach(row => {
+      const hit = kw === '' || row.textContent.toLowerCase().includes(kw);
+      row.style.display = hit ? '' : 'none';
+      if (hit) shown++;
+    });
+    $('#fileEmpty').classList.toggle('hidden', shown > 0);
+  } catch(e){}
+}
+
 function startOptions(next){
   fetchOptions({next: next});
 }
@@ -650,6 +795,7 @@ async function init(){
     if (s.need_login && !s.authed) showLogin(); else showApp();
   } catch (e) { showLogin(); }
   applyTheme(localStorage.getItem('ui_theme') || 'default');
+  loadFiles();
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
 }
 
@@ -667,6 +813,12 @@ $('#input').addEventListener('keydown', e => { if (e.key === 'Enter') send(); })
 $('#themeBtn').addEventListener('click', (e) => {
   e.stopPropagation();
   toggleThemePanel();
+});
+$('#tabChat').addEventListener('click', () => switchTab('chat'));
+$('#tabFiles').addEventListener('click', () => switchTab('files'));
+$('#sidebarSearch').addEventListener('input', (e) => {
+  fileSearchKw = e.target.value.trim().toLowerCase();
+  switchTab('files');
 });
 document.addEventListener('click', (e) => {
   if (!e.target.closest('#themePanel') && !e.target.closest('#themeBtn')) $('#themePanel').classList.add('hidden');
@@ -718,6 +870,7 @@ function renderSidebar(){
       b.textContent = item.label;
       b.addEventListener('click', () => {
         if (item.action === 'upload'){ $('#fileInput').click(); return; }
+        switchTab('chat');
         if (item.next){ startOptions(item.next); return; }
         runChat(item.cmd);
       });
