@@ -288,8 +288,9 @@ def _do_submit(aid: int, raw_answers: str):
             tokens = list(tokens[0])
         answer_map = {}
         for i, no in enumerate(q_nos):
-            if i < len(tokens) and tokens[i].strip():
-                answer_map[no] = tokens[i].strip().upper()
+            if i < len(tokens):
+                t = tokens[i].strip()
+                answer_map[no] = "未作答" if (not t or t.upper() == "X") else t.upper()
         if not answer_map:
             return "没看懂你的答案格式，请用逗号分隔，例如：B,A,C,D"
 
@@ -524,6 +525,7 @@ def handle_web_command(text: str) -> str:
         _web_papers[aid] = {"q": q, "a": a, "subject": row["subject"], "keys": _extract_answer_keys(a)}
         print(f"📱网页版已生成20道题并暂存答案：归档ID {aid}")
         return q + f"\n\n💡做完后点「✍️ 提交答案」，再直接输入答案（如 B,A,C,D）即可自动批改", [
+            {"label": "📝 答题模式", "payload": {"step": "quiz", "aid": aid}},
             {"label": "🤔 请教AI讲题", "payload": {"step": "run", "cmd": f"/explain id {aid}"}},
             {"label": "✍️ 提交答案", "payload": {"step": "run", "cmd": f"/submit id {aid}"}},
             {"label": "📖 查看答案", "payload": {"step": "run", "cmd": f"/answer id {aid}"}}
@@ -920,6 +922,80 @@ def options():
         return jsonify({"ok": True, "prompt": "", "options": [], "run": cmd})
 
     return jsonify({"ok": False, "error": "无效操作"})
+
+
+def _parse_quiz_options(q_text: str) -> list:
+    """从题目文本中提取 A/B/C/D 选项"""
+    import re
+    options = []
+    for m in re.finditer(r"(?m)^\s*([A-Da-d])\s*[.、．)）]\s*(.+)$", q_text):
+        options.append({"key": m.group(1).upper(), "text": m.group(2).strip()})
+    return options
+
+
+@app.route("/api/quiz", methods=["GET"])
+@login_required
+def quiz_data():
+    try:
+        aid = int(request.args.get("aid", ""))
+    except ValueError:
+        return jsonify({"ok": False, "error": "缺少归档ID"})
+    paper = _web_papers.get(aid)
+    if not paper:
+        return jsonify({"ok": False, "error": "请先通过「自测题」生成该归档的题目"})
+    from wrong_book import split_numbered
+    questions = []
+    for no, sec in split_numbered(paper["q"]):
+        questions.append({"no": no, "text": sec, "options": _parse_quiz_options(sec)})
+    return jsonify({"ok": True, "aid": aid, "subject": paper.get("subject", ""), "questions": questions})
+
+
+@app.route("/api/quiz_resume", methods=["GET"])
+@login_required
+def quiz_resume():
+    try:
+        aid = int(request.args.get("aid", ""))
+    except ValueError:
+        return jsonify({"ok": False, "error": "缺少归档ID"})
+    from quiz_store import get_record
+    rec = get_record(aid)
+    return jsonify({"ok": True, **rec})
+
+
+@app.route("/api/quiz_save", methods=["POST"])
+@login_required
+def quiz_save():
+    data = request.get_json(silent=True) or {}
+    try:
+        aid = int(data.get("aid"))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "缺少归档ID"})
+    from quiz_store import save_record
+    save_record(aid, data.get("answers") or {}, data.get("marked") or [])
+    return jsonify({"ok": True})
+
+
+@app.route("/api/quiz_submit", methods=["POST"])
+@login_required
+def quiz_submit():
+    data = request.get_json(silent=True) or {}
+    try:
+        aid = int(data.get("aid"))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "缺少归档ID"})
+    paper = _web_papers.get(aid)
+    if not paper:
+        return jsonify({"ok": False, "error": "请先通过「自测题」生成该归档的题目"})
+    answers = data.get("answers") or {}
+    from wrong_book import split_numbered
+    q_nos = [no for no, _ in split_numbered(paper["q"])]
+    ordered = ",".join(str(answers.get(str(no)) or answers.get(no) or "X").strip() for no in q_nos)
+    result = _do_submit(aid, ordered)
+    if isinstance(result, tuple):
+        reply, options = result
+    else:
+        reply, options = result, None
+    return jsonify({"ok": True, "reply": reply, "options": options})
 
 
 @app.route("/api/upload", methods=["POST"])

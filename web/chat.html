@@ -52,6 +52,24 @@
   .login-card button { width: 100%; background: #4a7dff; color: #fff; border: none; border-radius: 10px; padding: 11px; font-size: 15px; cursor: pointer; }
   .hidden { display: none !important; }
   #logout { margin-left: auto; background: rgba(255,255,255,.2); border: none; color: #fff; border-radius: 12px; padding: 5px 10px; font-size: 12px; cursor: pointer; }
+  .quiz-box { background: #fff; border: 1px solid #e5e9f2; border-radius: 16px; padding: 12px; max-width: 94%; width: 94%; }
+  .quiz-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 13px; color: #666; }
+  .quiz-progress { font-weight: 600; color: #4a7dff; }
+  .quiz-q { background: #f7f9ff; border-radius: 10px; padding: 10px; font-size: 14px; line-height: 1.6; margin-bottom: 10px; white-space: pre-wrap; word-break: break-word; }
+  .quiz-opt { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
+  .quiz-opt button { text-align: left; padding: 9px 12px; border-radius: 10px; border: 1px solid #dfe4ef; background: #fff; font-size: 14px; cursor: pointer; }
+  .quiz-opt button.sel { background: #4a7dff; color: #fff; border-color: #4a7dff; }
+  .quiz-q-input { width: 100%; border: 1px solid #dfe4ef; border-radius: 10px; padding: 9px 12px; font-size: 14px; outline: none; }
+  .quiz-sheet { display: grid; grid-template-columns: repeat(10, 1fr); gap: 5px; margin: 10px 0; }
+  .quiz-sheet button { aspect-ratio: 1; border-radius: 8px; border: 1px solid #dde3ee; background: #fff; font-size: 12px; cursor: pointer; position: relative; }
+  .quiz-sheet button.answered { background: #4a7dff; color: #fff; }
+  .quiz-sheet button.marked { background: #ffd54a; color: #222; }
+  .quiz-sheet button.current { outline: 2px solid #ff6b6b; }
+  .quiz-sheet button.marked::after { content: '⚑'; position: absolute; top: -5px; right: -2px; font-size: 10px; }
+  .quiz-ctrl { display: flex; gap: 8px; flex-wrap: wrap; }
+  .quiz-ctrl button { flex: 1; min-width: 78px; padding: 8px 6px; border-radius: 10px; border: none; background: #eef3ff; color: #4a7dff; font-size: 13px; cursor: pointer; }
+  .quiz-ctrl button.primary { background: #4a7dff; color: #fff; }
+  .quiz-ctrl button:disabled { opacity: .4; cursor: default; }
 </style>
 </head>
 <body>
@@ -290,7 +308,9 @@ function renderOptions(options){
     b.className = 'opt-btn';
     b.textContent = o.label;
     b.addEventListener('click', () => {
-      if (o.payload && o.payload.step === 'run') {
+      if (o.payload && o.payload.step === 'quiz') {
+        openQuiz(o.payload.aid);
+      } else if (o.payload && o.payload.step === 'run') {
         runChat(o.payload.cmd);
       } else {
         fetchOptions(o.payload);
@@ -301,6 +321,183 @@ function renderOptions(options){
   div.appendChild(box);
   $('#messages').appendChild(div);
   $('#messages').scrollTop = $('#messages').scrollHeight;
+}
+
+let quizState = null;
+
+function quizSaveLocal(st){
+  try { localStorage.setItem('quiz_' + st.aid, JSON.stringify({answers: st.answers, marked: st.marked})); } catch(e){}
+}
+
+function quizSaveServer(st){
+  fetch('/api/quiz_save', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({aid: st.aid, answers: st.answers, marked: st.marked})
+  }).catch(() => {});
+}
+
+function quizSave(st){
+  quizSaveLocal(st);
+  quizSaveServer(st);
+}
+
+function renderQuiz(st){
+  quizState = st;
+  let wrap = st.wrap;
+  if (!wrap){
+    wrap = document.createElement('div');
+    wrap.className = 'msg bot';
+    st.wrap = wrap;
+    $('#messages').appendChild(wrap);
+  } else {
+    wrap.innerHTML = '';
+  }
+  const box = document.createElement('div');
+  box.className = 'quiz-box';
+
+  const total = st.questions.length;
+  const answered = st.questions.filter(q => (st.answers[q.no] || '').trim() !== '').length;
+  const q = st.questions[st.current];
+
+  const head = document.createElement('div');
+  head.className = 'quiz-head';
+  head.innerHTML = '<span>📝 答题模式｜归档ID ' + st.aid + '</span><span class="quiz-progress">已答 ' + answered + '/' + total + '</span>';
+  box.appendChild(head);
+
+  const qbox = document.createElement('div');
+  qbox.className = 'quiz-q';
+  qbox.textContent = '第' + q.no + '题：\n' + q.text;
+  box.appendChild(qbox);
+
+  const optWrap = document.createElement('div');
+  optWrap.className = 'quiz-opt';
+  if (q.options && q.options.length){
+    q.options.forEach(o => {
+      const b = document.createElement('button');
+      b.textContent = o.key + '. ' + o.text;
+      if ((st.answers[q.no] || '').toUpperCase() === o.key) b.classList.add('sel');
+      b.addEventListener('click', () => {
+        st.answers[q.no] = o.key;
+        quizSave(st);
+        renderQuiz(st);
+      });
+      optWrap.appendChild(b);
+    });
+  } else {
+    const inp = document.createElement('input');
+    inp.className = 'quiz-q-input';
+    inp.placeholder = '简答题：输入你的回答（不会自动批改）';
+    inp.value = st.answers[q.no] || '';
+    inp.addEventListener('change', () => {
+      st.answers[q.no] = inp.value.trim();
+      quizSave(st);
+    });
+    optWrap.appendChild(inp);
+  }
+  box.appendChild(optWrap);
+
+  const sheet = document.createElement('div');
+  sheet.className = 'quiz-sheet';
+  st.questions.forEach((qq, idx) => {
+    const b = document.createElement('button');
+    b.textContent = qq.no;
+    if ((st.answers[qq.no] || '').trim()) b.classList.add('answered');
+    if (st.marked.includes(qq.no)) b.classList.add('marked');
+    if (idx === st.current) b.classList.add('current');
+    b.title = '第' + qq.no + '题';
+    b.addEventListener('click', () => { st.current = idx; renderQuiz(st); });
+    sheet.appendChild(b);
+  });
+  box.appendChild(sheet);
+
+  const ctrl = document.createElement('div');
+  ctrl.className = 'quiz-ctrl';
+  const btnPrev = document.createElement('button');
+  btnPrev.textContent = '⬅ 上一题';
+  btnPrev.disabled = st.current <= 0;
+  btnPrev.addEventListener('click', () => { st.current = Math.max(0, st.current - 1); renderQuiz(st); });
+  const btnNext = document.createElement('button');
+  btnNext.textContent = '下一题 ➡';
+  btnNext.addEventListener('click', () => { st.current = Math.min(total - 1, st.current + 1); renderQuiz(st); });
+  const btnMark = document.createElement('button');
+  btnMark.textContent = st.marked.includes(q.no) ? '取消标记 ⚑' : '标记本题 ⚑';
+  btnMark.addEventListener('click', () => {
+    const idx = st.marked.indexOf(q.no);
+    if (idx >= 0) st.marked.splice(idx, 1); else st.marked.push(q.no);
+    quizSave(st);
+    renderQuiz(st);
+  });
+  const btnSave = document.createElement('button');
+  btnSave.textContent = '💾 保存进度';
+  btnSave.addEventListener('click', () => {
+    quizSave(st);
+    addMsg('✅ 答题进度已保存，下次打开可继续', 'bot');
+  });
+  const btnSubmit = document.createElement('button');
+  btnSubmit.className = 'primary';
+  btnSubmit.textContent = '✅ 提交批改';
+  btnSubmit.addEventListener('click', () => submitQuiz(st, box));
+  ctrl.appendChild(btnPrev);
+  ctrl.appendChild(btnNext);
+  ctrl.appendChild(btnMark);
+  ctrl.appendChild(btnSave);
+  ctrl.appendChild(btnSubmit);
+  box.appendChild(ctrl);
+
+  wrap.appendChild(box);
+  $('#messages').scrollTop = $('#messages').scrollHeight;
+}
+
+async function submitQuiz(st, box){
+  const answers = {};
+  st.questions.forEach(qq => {
+    const v = (st.answers[qq.no] || '').trim();
+    if (v) answers[qq.no] = v;
+  });
+  quizSaveLocal(st);
+  try {
+    const r = await fetch('/api/quiz_submit', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({aid: st.aid, answers: answers})
+    });
+    const d = await r.json();
+    if (!d.ok){ addMsg('❌ ' + (d.error || '提交失败'), 'bot'); return; }
+    if (st.wrap) st.wrap.remove();
+    addMsg(d.reply, 'bot');
+    if (d.options) renderOptions(d.options);
+  } catch(e){
+    addMsg('❌ 网络错误：' + e.message, 'bot');
+  }
+}
+
+async function openQuiz(aid){
+  try {
+    const r = await fetch('/api/quiz?aid=' + encodeURIComponent(aid));
+    const d = await r.json();
+    if (!d.ok){ addMsg('❌ ' + (d.error || '加载失败'), 'bot'); return; }
+    let answers = {};
+    let marked = [];
+    try {
+      const rr = await fetch('/api/quiz_resume?aid=' + encodeURIComponent(aid));
+      const rd = await rr.json();
+      if (rd.ok){ answers = rd.answers || {}; marked = rd.marked || []; }
+    } catch(e){}
+    try {
+      const local = localStorage.getItem('quiz_' + aid);
+      if (local){
+        const ls = JSON.parse(local);
+        answers = ls.answers || answers;
+        marked = ls.marked || marked;
+      }
+    } catch(e){}
+    const st = {aid: aid, questions: d.questions, answers: answers, marked: marked, current: 0};
+    renderQuiz(st);
+    addMsg('🖊 答题卡已打开：点选项作答会变蓝，标记会变黄，切换/保存进度都不会丢失', 'bot');
+  } catch(e){
+    addMsg('❌ 网络错误：' + e.message, 'bot');
+  }
 }
 
 function startOptions(next){
