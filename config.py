@@ -22,6 +22,8 @@ _load_local_env()
 # ===================== 网页版与二级密码 =====================
 WEB_PASSWORD = os.getenv("WEB_PASSWORD", "")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "")
+# B站登录Cookie（可选）：填了之后中文关键词视频搜索更准确
+BILI_SESSDATA = os.getenv("BILI_SESSDATA", "")
 
 
 def check_admin_password(pwd: str) -> bool:

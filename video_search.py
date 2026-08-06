@@ -4,6 +4,7 @@ import hashlib
 import json
 import re
 import time
+import uuid
 import urllib.parse
 import urllib.request
 
@@ -62,10 +63,16 @@ def _api_search(keyword: str, limit: int = 5) -> list:
         query = urllib.parse.urlencode(sorted(filtered.items()))
         params["w_rid"] = hashlib.md5((query + mixin).encode("utf-8")).hexdigest()
         url = "https://api.bilibili.com/x/web-interface/wbi/search/type?" + urllib.parse.urlencode(params)
-        req = urllib.request.Request(
-            url,
-            headers={"User-Agent": UA, "Referer": "https://search.bilibili.com/"},
-        )
+        headers = {"User-Agent": UA, "Referer": "https://search.bilibili.com/"}
+        try:
+            import config as _cfg
+            sess = getattr(_cfg, "BILI_SESSDATA", "") or ""
+            if sess:
+                buvid3 = str(uuid.uuid4()) + "infoc"
+                headers["Cookie"] = f"buvid3={buvid3}; SESSDATA={sess}"
+        except Exception:
+            pass
+        req = urllib.request.Request(url, headers=headers)
         with urllib.request.urlopen(req, timeout=15) as resp:
             data = json.loads(resp.read().decode("utf-8", "replace"))
         if data.get("code") != 0:
