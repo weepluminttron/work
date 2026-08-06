@@ -39,6 +39,8 @@ WEB_PASSWORD = os.getenv("WEB_PASSWORD", "")
 _web_answers = {}
 # 自测题整卷暂存：{归档ID: {q, a, subject}}，供错题本记录使用
 _web_papers = {}
+# 待提交答案状态：点「提交答案」后，下一条非指令消息自动当作答案批改
+_web_pending_submit = {}
 
 # 后台任务：{task_id: {"status": "running"/"done"/"error", "reply": ..., "options": ..., "error": ..., "ts": ...}}
 _task_results = {}
@@ -63,7 +65,15 @@ def _finish_task(task_id: str, status: str, **kwargs):
 def _run_task(task_id: str, text: str):
     """后台执行聊天指令"""
     try:
-        reply = handle_web_command(text)
+        if text.startswith("/"):
+            # 任何新指令都会取消“待提交答案”状态
+            _web_pending_submit.clear()
+            reply = handle_web_command(text)
+        elif _web_pending_submit:
+            aid = _web_pending_submit.pop("aid", None)
+            reply = _do_submit(aid, text) if aid is not None else handle_web_command(text)
+        else:
+            reply = handle_web_command(text)
         if isinstance(reply, tuple):
             reply_text, reply_options = reply
         else:
@@ -133,7 +143,7 @@ HELP_TEXT = """📚 网页版学习助手指令：
 /daily id 3 [days 5] [每天60分钟] 生成每日任务并保存（可指定每天学习时长）
 /progress id 3      查看学习进度
 /done id 3 day 2    打卡完成第2天任务
-/submit id 3 B,A,C,D 提交自测题答案，自动批改客观题并记入错题本
+/submit id 3 提交答案：点「提交答案」后直接输入如 B,A,C,D，自动批改并记入错题本
 /del id 3           删除归档文档（同步清理知识库）
 /polish 德语 文本    润色德语/英语文本（或 /polish id 3）
 /merge 科目名        把同科目的所有文档合并为一条归档
@@ -222,6 +232,73 @@ def _extract_answer_keys(answer_text: str) -> dict:
         for m in pat2.finditer(answer_text or ""):
             keys.setdefault(int(m.group(1)), m.group(2).upper())
     return keys
+
+
+def _do_submit(aid: int, raw_answers: str):
+    """自动批改客观题：支持 B,A,C,D / B A C D / BACD / 1:B 2:A / 第1题 B 等格式"""
+    import re
+    from wrong_book import add_wrong_paper, split_numbered
+    paper = _web_papers.get(aid)
+    if not paper:
+        return "请先通过「自测题」生成该归档的题目，再提交答案"
+    keys = paper.get("keys") or {}
+    if not keys:
+        return "⚠️这份试卷的答案格式不统一，无法自动批改。请用 /answer id 归档ID 查看答案自行核对"
+    raw = (raw_answers or "").strip()
+    if not raw:
+        return "请输入你的答案，例如：B,A,C,D"
+    q_nos = [no for no, _ in split_numbered(paper["q"])]
+    a_map = {no: txt for no, txt in split_numbered(paper["a"])}
+
+    # 格式1：1:B 2:A / 1.B / 第1题 B（按题号对应，顺序无关）
+    pair_map = {}
+    for m in re.finditer(r"(?:第)?\s*(\d{1,3})\s*[题\.、．:：]?\s*([A-Da-d])", raw):
+        pair_map.setdefault(int(m.group(1)), m.group(2).upper())
+    if len(pair_map) >= 2:
+        answer_map = pair_map
+    else:
+        # 格式2：顺序答案 B,A,C,D / B A C D / BACD
+        tokens = re.split(r"[,，\s、;；]+", raw)
+        if len(tokens) == 1 and len(tokens[0]) > 1 and all(ch.upper() in "ABCD" for ch in tokens[0]):
+            tokens = list(tokens[0])
+        answer_map = {}
+        for i, no in enumerate(q_nos):
+            if i < len(tokens) and tokens[i].strip():
+                answer_map[no] = tokens[i].strip().upper()
+        if not answer_map:
+            return "没看懂你的答案格式，请用逗号分隔，例如：B,A,C,D"
+
+    lines = [f"📝【归档ID {aid}】客观题批改结果"]
+    correct = 0
+    graded = 0
+    wrong_nos = []
+    for no in q_nos:
+        if no not in keys:
+            continue
+        correct_key = keys[no]
+        user_key = answer_map.get(no, "未作答")
+        graded += 1
+        if user_key == correct_key:
+            correct += 1
+            lines.append(f"✅ 第{no}题：你的答案 {user_key} 正确")
+        else:
+            wrong_nos.append(no)
+            lines.append(f"❌ 第{no}题：你的答案 {user_key}，正确答案 {correct_key}")
+        exp = a_map.get(no, "")
+        if exp:
+            exp_short = re.sub(r"^\s*\d{1,3}\s*[.、．]\s*", "", exp).strip()
+            lines.append(f"   📖 {exp_short[:150]}")
+    if graded == 0:
+        return "这份试卷没有可自动批改的客观题（可能全是简答题），请用 /answer 查看答案"
+    lines.append(f"\n🎯 客观题 {correct}/{graded} 正确")
+    if wrong_nos:
+        add_wrong_paper(aid, paper["subject"], paper["q"], paper["a"], wrong_nos)
+        lines.append(f"📕 已自动将 {len(wrong_nos)} 道错题记入错题本")
+        return "\n".join(lines), [
+            {"label": "📕 复习错题", "payload": {"step": "run", "cmd": f"/wrong id {aid}"}}
+        ]
+    lines.append("🎉 全部正确，继续保持！")
+    return "\n".join(lines)
 
 
 def _get_archive(aid):
@@ -313,58 +390,23 @@ def handle_web_command(text: str) -> str:
         _web_answers[aid] = a
         _web_papers[aid] = {"q": q, "a": a, "subject": row["subject"], "keys": _extract_answer_keys(a)}
         print(f"📱网页版已生成20道题并暂存答案：归档ID {aid}")
-        return q + f"\n\n💡做完题发送 /submit id {aid} 答案（如 B,A,C,D）可自动批改客观题", [
+        return q + f"\n\n💡做完后点「✍️ 提交答案」，再直接输入答案（如 B,A,C,D）即可自动批改", [
+            {"label": "✍️ 提交答案", "payload": {"step": "run", "cmd": f"/submit id {aid}"}},
             {"label": "📖 查看答案", "payload": {"step": "run", "cmd": f"/answer id {aid}"}}
         ]
 
     if cmd == "/submit":
-        import re
-        from wrong_book import add_wrong_paper, split_numbered
         aid = _parse_aid(parts)
         if aid is None:
             return "用法：/submit id 归档ID 你的答案\n示例：/submit id 3 B,A,C,D"
         paper = _web_papers.get(aid)
         if not paper:
             return "请先通过「自测题」生成该归档的题目，再提交答案"
-        keys = paper.get("keys") or {}
-        if not keys:
-            return "⚠️这份试卷的答案格式不统一，无法自动批改。请用 /answer id 归档ID 查看答案自行核对"
-        raw_answers = "".join(parts[3:])
-        user_answers = [x.strip().upper() for x in re.split(r"[,，\s、]+", raw_answers) if x.strip()]
-        q_nos = [no for no, _ in split_numbered(paper["q"])]
-        a_map = {no: txt for no, txt in split_numbered(paper["a"])}
-
-        lines = [f"📝【归档ID {aid}】客观题批改结果"]
-        correct = 0
-        graded = 0
-        wrong_nos = []
-        for i, no in enumerate(q_nos):
-            if no not in keys:
-                continue
-            correct_key = keys[no]
-            user_key = user_answers[i] if i < len(user_answers) else "未作答"
-            graded += 1
-            if user_key == correct_key:
-                correct += 1
-                lines.append(f"✅ 第{no}题：你的答案 {user_key} 正确")
-            else:
-                wrong_nos.append(no)
-                lines.append(f"❌ 第{no}题：你的答案 {user_key}，正确答案 {correct_key}")
-            exp = a_map.get(no, "")
-            if exp:
-                exp_short = re.sub(r"^\s*\d{1,3}\s*[.、．]\s*", "", exp).strip()
-                lines.append(f"   📖 {exp_short[:150]}")
-        if graded == 0:
-            return "这份试卷没有可自动批改的客观题（可能全是简答题），请用 /answer 查看答案"
-        lines.append(f"\n🎯 客观题 {correct}/{graded} 正确")
-        if wrong_nos:
-            add_wrong_paper(aid, paper["subject"], paper["q"], paper["a"], wrong_nos)
-            lines.append(f"📕 已自动将 {len(wrong_nos)} 道错题记入错题本")
-            return "\n".join(lines), [
-                {"label": "📕 复习错题", "payload": {"step": "run", "cmd": f"/wrong id {aid}"}}
-            ]
-        lines.append("🎉 全部正确，继续保持！")
-        return "\n".join(lines)
+        raw_answers = " ".join(parts[3:]).strip()
+        if not raw_answers:
+            _web_pending_submit["aid"] = aid
+            return "✍️ 请在输入框直接发送你的答案（如 B,A,C,D），我会自动批改。\n也支持：B A C D、BACD、1:B 2:A、第1题 B"
+        return _do_submit(aid, raw_answers)
 
     if cmd == "/answer":
         aid = _parse_aid(parts)
