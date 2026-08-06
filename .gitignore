@@ -11,6 +11,7 @@ test_record_cache.json
 wrong_book.json
 quiz_records.json
 chat_memory.json
+conversations.json
 study_docs/
 学习笔记/
 chroma_study_kb/

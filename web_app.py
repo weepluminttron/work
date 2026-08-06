@@ -100,8 +100,8 @@ def _finish_task(task_id: str, status: str, **kwargs):
         _task_results[task_id] = {"status": status, "ts": time.time(), **kwargs}
 
 
-def _run_task(task_id: str, text: str):
-    """后台执行聊天指令"""
+def _run_task(task_id: str, text: str, conversation_id: str = None):
+    """后台执行聊天指令；有会话ID时自动保存对话"""
     try:
         if text.startswith("/"):
             # 任何新指令都会取消“待提交答案”状态
@@ -138,6 +138,12 @@ def _run_task(task_id: str, text: str):
             reply_text, reply_options = reply
         else:
             reply_text, reply_options = reply, None
+        if conversation_id and not text.startswith("/"):
+            try:
+                from conversation_store import append_messages
+                append_messages(conversation_id, text, reply_text)
+            except Exception as e:
+                print(f"⚠️保存对话失败：{e}")
         print(f"📱网页版回复完成（{len(reply_text)} 字）")
         _finish_task(task_id, "done", reply=reply_text, options=reply_options)
     except Exception as e:
@@ -370,6 +376,31 @@ def market_add():
 def stats():
     from review_scheduler import get_overall_stats
     return jsonify({"ok": True, **get_overall_stats()})
+
+
+@app.route("/api/conversations", methods=["GET"])
+@login_required
+def conversations():
+    from conversation_store import list_conversations
+    return jsonify({"ok": True, "conversations": list_conversations()})
+
+
+@app.route("/api/conversations", methods=["POST"])
+@login_required
+def create_conversation():
+    from conversation_store import create_conversation
+    conv = create_conversation()
+    return jsonify({"ok": True, "conversation": conv})
+
+
+@app.route("/api/conversations/<cid>", methods=["GET"])
+@login_required
+def conversation_detail(cid):
+    from conversation_store import get_conversation
+    conv = get_conversation(cid)
+    if not conv:
+        return jsonify({"ok": False, "error": "对话不存在"}), 404
+    return jsonify({"ok": True, "conversation": conv})
 
 
 @app.route("/")
@@ -867,13 +898,14 @@ def handle_web_command(text: str) -> str:
 def chat():
     data = request.get_json(silent=True) or {}
     text = (data.get("message") or "").strip()
+    conversation_id = data.get("conversation_id") or None
     print(f"📱网页版收到消息：{text[:200]}")
     if not text:
         return jsonify({"ok": False, "error": "消息为空"})
     _prune_tasks()
     task_id = uuid.uuid4().hex[:12]
     _finish_task(task_id, "running")
-    threading.Thread(target=_run_task, args=(task_id, text), daemon=True).start()
+    threading.Thread(target=_run_task, args=(task_id, text, conversation_id), daemon=True).start()
     return jsonify({"ok": True, "task_id": task_id, "status": "running"})
 
 
