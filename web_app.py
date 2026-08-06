@@ -41,6 +41,8 @@ _web_answers = {}
 _web_papers = {}
 # 待提交答案状态：点「提交答案」后，下一条非指令消息自动当作答案批改
 _web_pending_submit = {}
+# 待讲解状态：点「请教AI讲题」后，下一条消息为题号或追问
+_web_pending_explain = {}
 
 # 后台任务：{task_id: {"status": "running"/"done"/"error", "reply": ..., "options": ..., "error": ..., "ts": ...}}
 _task_results = {}
@@ -68,10 +70,32 @@ def _run_task(task_id: str, text: str):
         if text.startswith("/"):
             # 任何新指令都会取消“待提交答案”状态
             _web_pending_submit.clear()
+            _web_pending_explain.clear()
             reply = handle_web_command(text)
         elif _web_pending_submit:
             aid = _web_pending_submit.pop("aid", None)
             reply = _do_submit(aid, text) if aid is not None else handle_web_command(text)
+        elif _web_pending_explain:
+            import re as _re
+            st = _web_pending_explain
+            if st.get("mode") == "pick":
+                nums = [int(x) for x in _re.findall(r"\d+", text)]
+                if not nums:
+                    reply = "请输入题号，例如：1 或 1,3,5"
+                else:
+                    parts_out = [_explain_question(st["aid"], n) for n in nums[:3]]
+                    reply = "\n\n---\n\n".join(parts_out)
+                    if len(nums) == 1:
+                        st["mode"] = "followup"
+                        st["qno"] = nums[0]
+                        st["history"] = [("讲解", parts_out[0])]
+                    else:
+                        _web_pending_explain.clear()
+            elif st.get("mode") == "followup":
+                reply = _followup_explain(st, text)
+            else:
+                _web_pending_explain.clear()
+                reply = handle_web_command(text)
         else:
             reply = handle_web_command(text)
         if isinstance(reply, tuple):
@@ -144,6 +168,7 @@ HELP_TEXT = """📚 网页版学习助手指令：
 /progress id 3      查看学习进度
 /done id 3 day 2    打卡完成第2天任务
 /submit id 3 提交答案：点「提交答案」后直接输入如 B,A,C,D，自动批改并记入错题本
+/explain id 3 [题号] 让AI老师讲题：检索归档资料，输出结构化解析，可继续追问
 /del id 3           删除归档文档（同步清理知识库）
 /polish 德语 文本    润色德语/英语文本（或 /polish id 3）
 /merge 科目名        把同科目的所有文档合并为一条归档
@@ -301,6 +326,114 @@ def _do_submit(aid: int, raw_answers: str):
     return "\n".join(lines)
 
 
+def _explain_question(aid: int, qno: int) -> str:
+    """AI老师讲解单题：RAG检索归档资料 + 结构化输出"""
+    import json
+    import re
+    from wrong_book import split_numbered
+    paper = _web_papers.get(aid)
+    if not paper:
+        return "请先通过「自测题」生成该归档的题目"
+    q_map = {no: txt for no, txt in split_numbered(paper["q"])}
+    q_text = q_map.get(qno)
+    if not q_text:
+        return f"没有找到第 {qno} 题，请确认题号"
+    a_map = {no: txt for no, txt in split_numbered(paper["a"])}
+    answer_text = a_map.get(qno, "")
+
+    # RAG 检索相关教材片段，让讲解有依据、不瞎编
+    ref_block = ""
+    try:
+        from vector_kb import query_knowledge
+        kb = query_knowledge(q_text, top_k=3)
+        if kb["chunks"]:
+            ref_parts = []
+            for txt, meta in zip(kb["chunks"], kb["meta"]):
+                fn = meta.get("filename", "")
+                ref_parts.append(f"（来源：{fn}）\n{txt}")
+            ref_block = "\n\n".join(ref_parts)
+    except Exception as e:
+        print(f"⚠️讲题检索失败：{e}")
+
+    prompt = f"""
+你是耐心温和的AI老师，擅长用“循循善诱”的方式讲题。
+请严格按下面的JSON格式输出，只输出JSON，不要任何额外说明：
+{{"题型":"选择题/填空题/简答题等","题目分析":"拆解题干与选项的含义","考查知识点":["知识点1","知识点2"],"解题思路":"分步骤讲解，先易后难，引导学生自己思考","参考答案":"标准答案","易错点":"学生容易错在哪里"}}
+
+【题目】
+{q_text}
+
+【参考答案参考】
+{answer_text}
+
+【教材参考资料】（仅作为讲解依据，不要照抄原文）
+{ref_block or "（暂无检索到相关教材，请基于题目本身讲解）"}
+"""
+    from llm_summary import llm_request
+    resp = llm_request(prompt, timeout=60)
+    if resp.startswith("❌"):
+        return resp
+    m = re.search(r"\{.*\}", resp, re.DOTALL)
+    if not m:
+        return f"🤖【AI老师讲解】第{qno}题\n\n{resp}"
+    try:
+        data = json.loads(m.group())
+    except Exception:
+        data = None
+    if not data:
+        return f"🤖【AI老师讲解】第{qno}题\n\n{resp}"
+    kps = data.get("考查知识点") or []
+    if isinstance(kps, str):
+        kps = [kps]
+    lines = [
+        f"🤖【AI老师讲解】第{qno}题",
+        f"🧩 题型：{data.get('题型', '')}",
+        f"📖 题目分析：{data.get('题目分析', '')}",
+        "🎯 考查知识点：",
+    ]
+    for k in kps:
+        lines.append(f"- {k}")
+    lines.append(f"💡 解题思路：\n{data.get('解题思路', '')}")
+    if data.get("参考答案"):
+        lines.append(f"✅ 参考答案：{data.get('参考答案')}")
+    if data.get("易错点"):
+        lines.append(f"⚠️ 易错点：{data.get('易错点')}")
+    return "\n".join(lines)
+
+
+def _followup_explain(st: dict, question: str) -> str:
+    """多轮追问：带上题目和上一轮讲解，保持上下文"""
+    from wrong_book import split_numbered
+    aid = st.get("aid")
+    qno = st.get("qno")
+    paper = _web_papers.get(aid)
+    q_map = {no: txt for no, txt in split_numbered(paper["q"])} if paper else {}
+    q_text = q_map.get(qno, "")
+    history = st.get("history") or []
+    last_explain = history[-1][1] if history else ""
+    prompt = f"""
+你是刚才给这位学生讲题的AI老师，请继续回答学生的追问。
+语气温和耐心，结合刚才的讲解内容，先引导学生思考，再给出明确解释；如果学生的问题与本题无关，礼貌提醒回到本题。
+
+【题目】
+{q_text}
+
+【刚才的讲解】
+{last_explain}
+
+【学生追问】
+{question}
+
+请直接输出你的回答，不需要JSON格式。
+"""
+    from llm_summary import llm_request
+    resp = llm_request(prompt, timeout=60)
+    st["history"].append((question, resp))
+    if len(st["history"]) > 8:
+        st["history"] = st["history"][-8:]
+    return f"🤖【追问回复】\n{resp}"
+
+
 def _get_archive(aid):
     from archive_db import get_archive_by_id
     return get_archive_by_id(aid)
@@ -391,6 +524,7 @@ def handle_web_command(text: str) -> str:
         _web_papers[aid] = {"q": q, "a": a, "subject": row["subject"], "keys": _extract_answer_keys(a)}
         print(f"📱网页版已生成20道题并暂存答案：归档ID {aid}")
         return q + f"\n\n💡做完后点「✍️ 提交答案」，再直接输入答案（如 B,A,C,D）即可自动批改", [
+            {"label": "🤔 请教AI讲题", "payload": {"step": "run", "cmd": f"/explain id {aid}"}},
             {"label": "✍️ 提交答案", "payload": {"step": "run", "cmd": f"/submit id {aid}"}},
             {"label": "📖 查看答案", "payload": {"step": "run", "cmd": f"/answer id {aid}"}}
         ]
@@ -407,6 +541,24 @@ def handle_web_command(text: str) -> str:
             _web_pending_submit["aid"] = aid
             return "✍️ 请在输入框直接发送你的答案（如 B,A,C,D），我会自动批改。\n也支持：B A C D、BACD、1:B 2:A、第1题 B"
         return _do_submit(aid, raw_answers)
+
+    if cmd == "/explain":
+        aid = _parse_aid(parts)
+        if aid is None:
+            return "用法：/explain id 归档ID [题号]\n示例：/explain id 3 1"
+        if aid not in _web_papers:
+            return "请先通过「自测题」生成该归档的题目"
+        qno = None
+        if len(parts) >= 4 and parts[1].lower() == "id" and parts[3].isdigit():
+            qno = int(parts[3])
+        elif len(parts) >= 3 and parts[2].isdigit():
+            qno = int(parts[2])
+        if qno is None:
+            _web_pending_explain = {"aid": aid, "mode": "pick"}
+            return "🤔 请发送要讲解的题号（如 1 或 1,3,5）"
+        reply = _explain_question(aid, qno)
+        _web_pending_explain = {"aid": aid, "mode": "followup", "qno": qno, "history": [("讲解", reply)]}
+        return reply + "\n\n💬 还可以继续追问这道题，直接输入问题即可；发送其他指令则退出讲解"
 
     if cmd == "/answer":
         aid = _parse_aid(parts)
