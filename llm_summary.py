@@ -227,27 +227,28 @@ def generate_skill_package(topic: str):
     return data
 
 def auto_extract_archive_info(pdf_text: str) -> dict:
-    """AI识别文档科目和核心知识点（网页版/飞书版共用）"""
+    """AI识别文档科目、核心知识点和文件名（网页版/飞书版共用，一次调用）"""
     import re
     import json
     short_text = pdf_text[:3000]
     prompt = f"""
 你是专业课程资料归档助手，严格遵守下面所有规则，**只输出纯JSON字符串**，禁止输出任何前置说明、注释、markdown、思考过程、多余换行。
-{{"subject":"科目名称","keypoint":"文档核心知识点概括，20～45字"}}
+{{"subject":"科目名称","keypoint":"文档核心知识点概括，20～45字","short_name":"建议归档文件名（20字以内，不要扩展名）"}}
 文档片段：
 {short_text}
 """
     resp = llm_request(prompt)
     json_match = re.search(r"\{.*\}", resp, re.DOTALL)
     if not json_match:
-        return {"subject": "未知科目", "keypoint": "未识别知识点"}
+        return {"subject": "未知科目", "keypoint": "未识别知识点", "short_name": ""}
     try:
         data = json.loads(json_match.group())
         subject = str(data.get("subject", "未知科目")).strip()
         kp = str(data.get("keypoint", "未识别知识点")).strip()
-        return {"subject": subject, "keypoint": kp}
+        short_name = str(data.get("short_name", "")).strip()
+        return {"subject": subject, "keypoint": kp, "short_name": short_name}
     except Exception:
-        return {"subject": "未知科目", "keypoint": "未识别知识点"}
+        return {"subject": "未知科目", "keypoint": "未识别知识点", "short_name": ""}
 
 def ai_simplify_filename(raw_name: str, subject: str) -> str:
     """AI精简文件名（网页版/飞书版共用）"""

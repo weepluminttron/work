@@ -49,6 +49,25 @@ if admin_pwd:
 user_context.migrate_legacy(ADMIN_USERNAME)
 
 
+def _warmup_local_models():
+    """后台预热本地向量模型与OCR，首次使用不再现等"""
+    try:
+        from vector_kb import _get_local_embedder
+        _get_local_embedder()
+        print("✅本地向量模型预热完成", flush=True)
+    except Exception as e:
+        print(f"⚠️向量模型预热失败：{e}", flush=True)
+    try:
+        from file_parser import _init_rapid_engine
+        _init_rapid_engine()
+        print("✅RapidOCR预热完成", flush=True)
+    except Exception as e:
+        print(f"⚠️OCR预热失败：{e}", flush=True)
+
+
+threading.Thread(target=_warmup_local_models, daemon=True).start()
+
+
 @app.before_request
 def _set_request_ctx():
     """每个请求生成日志ID并记录开始时间（对齐 Coze 的访问日志中间件）"""
@@ -258,7 +277,7 @@ def _run_upload_task(task_id: str, filename: str, file_bytes: bytes, user: str =
 
         auto_info = auto_extract_archive_info(doc_text)
         subj = auto_info["subject"]
-        short_name = ai_simplify_filename(filename, subj)
+        short_name = auto_info.get("short_name") or ai_simplify_filename(filename, subj)
         save_path, new_aid = archive_file(subj, short_name, file_bytes, filename, doc_text)
         kb_note = ""
         try:

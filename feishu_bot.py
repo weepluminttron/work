@@ -536,7 +536,7 @@ def process_message_task(event_data):
                 doc_text = doc_text[:config.MAX_LLM_CONTEXT]
                 auto_info = auto_extract_archive_info(doc_text)
                 subj = auto_info["subject"]
-                short_name = ai_simplify_filename(file_name, subj)
+                short_name = auto_info.get("short_name") or ai_simplify_filename(file_name, subj)
                 from archive_db import archive_file
                 # =========核心修复：参数顺序修正 + 接收元组==========
                 save_path, new_aid = archive_file(subj, short_name, file_bytes, file_name, doc_text)
