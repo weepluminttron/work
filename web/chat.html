@@ -80,6 +80,8 @@
   .login-card h1 { font-size: 20px; margin-bottom: 6px; }
   .login-card p { color: var(--text-2); font-size: 13px; margin-bottom: 18px; }
   .login-card input { width: 100%; border: 1px solid var(--border-2); border-radius: 10px; padding: 11px; font-size: 15px; margin-bottom: 12px; outline: none; background: var(--input-bg); color: var(--text); }
+  .remember-row { display: flex; gap: 16px; justify-content: center; margin-bottom: 12px; font-size: 13px; color: var(--text-2); }
+  .remember-row label { display: flex; align-items: center; gap: 4px; cursor: pointer; }
   .login-card button { width: 100%; background: linear-gradient(135deg, var(--primary), var(--primary-2)); color: #fff; border: none; border-radius: 10px; padding: 11px; font-size: 15px; cursor: pointer; }
   .login-toggle { margin-top: 12px; font-size: 13px; color: var(--text-2); }
   .login-toggle span { color: var(--primary); cursor: pointer; font-weight: 600; }
@@ -300,6 +302,10 @@
     <p id="loginHint">输入账号密码开始使用</p>
     <input id="username" placeholder="用户名" autocomplete="username">
     <input id="password" type="password" placeholder="访问密码" autocomplete="current-password">
+    <div class="remember-row" id="rememberRow">
+      <label><input type="checkbox" id="rememberUser"> 记住账号</label>
+      <label><input type="checkbox" id="rememberPwd"> 记住密码</label>
+    </div>
     <button id="loginBtn">登 录</button>
     <div class="login-toggle" id="loginToggle">没有账号？<span>注册一个</span></div>
   </div>
@@ -1370,6 +1376,7 @@ async function upload(){
 }
 
 async function init(){
+  loadSavedLogin();
   try {
     const r = await fetch('/api/status');
     const s = await r.json();
@@ -1395,11 +1402,34 @@ $('#logout').addEventListener('click', async () => {
 });
 
 let loginMode = 'login';
+
+function loadSavedLogin(){
+  try {
+    const u = localStorage.getItem('study_username') || '';
+    if (u){ $('#username').value = u; $('#rememberUser').checked = true; }
+    const p = localStorage.getItem('study_password') || '';
+    if (p){ $('#password').value = decodeURIComponent(escape(atob(p))); $('#rememberPwd').checked = true; }
+  } catch(e){}
+}
+
+function saveSavedLogin(username, password){
+  try {
+    localStorage.setItem('study_username', username);
+    if ($('#rememberPwd').checked){
+      localStorage.setItem('study_password', btoa(unescape(encodeURIComponent(password))));
+    } else {
+      localStorage.removeItem('study_password');
+    }
+    if (!$('#rememberUser').checked) localStorage.removeItem('study_username');
+  } catch(e){}
+}
+
 $('#loginToggle').addEventListener('click', () => {
   loginMode = loginMode === 'login' ? 'register' : 'login';
   $('#loginBtn').textContent = loginMode === 'login' ? '登 录' : '注 册';
   $('#loginHint').textContent = loginMode === 'login' ? '输入账号密码开始使用' : '注册新账号（普通用户）';
   $('#loginToggle').innerHTML = loginMode === 'login' ? '没有账号？<span>注册一个</span>' : '已有账号？<span>去登录</span>';
+  $('#rememberRow').style.display = loginMode === 'login' ? 'flex' : 'none';
 });
 
 $('#loginBtn').addEventListener('click', async () => {
@@ -1426,6 +1456,7 @@ $('#loginBtn').addEventListener('click', async () => {
   const d = await safeJson(r);
   if (r.ok && d && d.ok){
     currentUser = {username: d.username, role: d.role, is_admin: d.is_admin};
+    saveSavedLogin(username, password);
     showApp();
     loadFiles();
     loadStats();
