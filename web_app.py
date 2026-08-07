@@ -339,6 +339,7 @@ HELP_TEXT = """📚 网页版学习助手指令：
 /wrong              错题本（查看/记录/清除做错的题）
 /clear              清空对话记忆（开始新话题）
 /restore 对话ID      恢复误删的对话
+/password 旧密码 新密码 修改自己的登录密码
 /goals              长期学习目标列表
 /goal 3年 德语 B2    创建长期目标（AI生成阶段规划）
 /market 主题          AI生成自定义技能包并加入技能市场
@@ -1000,6 +1001,13 @@ def handle_web_command(text: str) -> str:
         from conversation_store import restore_conversation
         ok = restore_conversation(cid)
         return "✅ 对话已恢复" if ok else "❌ 没有找到可恢复的对话（可能已被彻底删除）"
+
+    if cmd == "/password":
+        if len(parts) < 3:
+            return "用法：/password 旧密码 新密码"
+        from user_auth import change_password
+        ok, msg = change_password(user_context.current_user(), parts[1], parts[2])
+        return ("✅ " + msg) if ok else ("❌ " + msg)
 
     if cmd in ("/video", "/视频"):
         from study_service import video_cmd_text

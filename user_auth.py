@@ -32,12 +32,18 @@ def _save(data: dict):
 
 
 def ensure_admin(username: str, password: str):
-    """启动时确保管理员账号存在（来自环境变量）"""
+    """启动时确保管理员账号存在，且密码始终与 .env 同步（.env 为准）"""
     if not username or not password:
         return
     with _lock:
         data = _load()
         if username in data:
+            if data[username].get("role") == "admin":
+                # 管理员密码以 .env 为准，每次启动同步
+                data[username]["salt"] = uuid.uuid4().hex[:8]
+                data[username]["hash"] = _hash(password, data[username]["salt"])
+                _save(data)
+                print("✅管理员密码已按 .env 配置同步")
             return
         salt = uuid.uuid4().hex[:8]
         data[username] = {
@@ -85,3 +91,29 @@ def authenticate(username: str, password: str):
     if _hash(password, user["salt"]) != user["hash"]:
         return None
     return {"username": username, "role": user.get("role", "user")}
+
+
+def set_password(username: str, password: str) -> bool:
+    username = (username or "").strip()
+    if not username or len(password or "") < 6:
+        return False
+    with _lock:
+        data = _load()
+        user = data.get(username)
+        if not user:
+            return False
+        user["salt"] = uuid.uuid4().hex[:8]
+        user["hash"] = _hash(password, user["salt"])
+        _save(data)
+    return True
+
+
+def change_password(username: str, old_password: str, new_password: str):
+    """修改自己的密码"""
+    if not authenticate(username, old_password):
+        return False, "当前密码错误"
+    if len(new_password or "") < 6:
+        return False, "新密码至少6位"
+    if set_password(username, new_password):
+        return True, "密码已修改"
+    return False, "修改失败"

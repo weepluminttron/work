@@ -25,6 +25,12 @@ class UserAuthTest(unittest.TestCase):
         self.assertEqual(user["role"], "admin")
         self.assertIsNone(user_auth.authenticate("admin", "wrong"))
 
+    def test_admin_password_syncs_with_env(self):
+        user_auth.ensure_admin("admin", "old123")
+        user_auth.ensure_admin("admin", "new456")
+        self.assertIsNotNone(user_auth.authenticate("admin", "new456"))
+        self.assertIsNone(user_auth.authenticate("admin", "old123"))
+
     def test_register(self):
         ok, _ = user_auth.register("alice", "pass123")
         self.assertTrue(ok)
@@ -33,6 +39,15 @@ class UserAuthTest(unittest.TestCase):
         user = user_auth.authenticate("alice", "pass123")
         self.assertEqual(user["role"], "user")
         self.assertIsNone(user_auth.authenticate("alice", "bad"))
+
+    def test_change_password(self):
+        user_auth.register("bob", "pass123")
+        ok, _ = user_auth.change_password("bob", "pass123", "newpass99")
+        self.assertTrue(ok)
+        self.assertIsNotNone(user_auth.authenticate("bob", "newpass99"))
+        self.assertIsNone(user_auth.authenticate("bob", "pass123"))
+        ok2, _ = user_auth.change_password("bob", "wrong", "abc123")
+        self.assertFalse(ok2)
 
     def test_scope_per_user(self):
         orig_root = user_context.DATA_ROOT
