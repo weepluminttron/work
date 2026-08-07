@@ -140,6 +140,7 @@
   footer { max-width: 860px; width: 100%; margin: 0 auto; background: transparent; border-top: none; padding: 10px 16px 14px; gap: 8px; }
   #input { border-radius: 22px; padding: 11px 16px; box-shadow: var(--shadow); }
   #attach { border-radius: 50%; width: 42px; height: 42px; flex: 0 0 42px; padding: 0; font-size: 17px; }
+  #speakBtn { border-radius: 50%; width: 42px; height: 42px; flex: 0 0 42px; padding: 0; font-size: 17px; background: var(--primary-soft); color: var(--primary); border: none; cursor: pointer; }
   #send { border-radius: 50%; width: 42px; height: 42px; flex: 0 0 42px; padding: 0; font-size: 16px; }
   @media (min-width: 900px) {
     .sidebar { display: flex; }
@@ -409,9 +410,10 @@
         <button class="wbtn" data-view="market">🛍 市场</button>
       </div>
       <footer>
-    <button id="attach" title="上传文件（PDF/DOC/DOCX/PPTX/图片）">➕</button>
+        <button id="attach" title="上传文件（PDF/DOC/DOCX/PPTX/图片）">➕</button>
         <input type="file" id="fileInput" accept=".pdf,.doc,.docx,.pptx,.jpg,.jpeg,.png,.bmp,.webp" hidden>
         <input id="input" placeholder="输入问题，和我聊聊…">
+        <button id="speakBtn" title="朗读输入框内容">🔊</button>
         <button id="send">➤</button>
       </footer>
     </div>
@@ -688,6 +690,12 @@ function send(){
   const text = input.value.trim();
   if (!text) return;
   input.value = '';
+  const m = text.match(/^\/(say|读|朗读)\s+(.+)$/i);
+  if (m){
+    addMsg(text, 'user');
+    speakText(m[2]);
+    return;
+  }
   runChat(text);
 }
 
@@ -1410,6 +1418,40 @@ async function uploadFile(file){
   }
 }
 
+function detectLang(text){
+  if (/[äöüßÄÖÜ]/.test(text)) return 'de-DE';
+  if (/[\u4e00-\u9fff]/.test(text)) return 'zh-CN';
+  if (/[àâçéèêëîïôûùüÿœæ]/.test(text)) return 'fr-FR';
+  return 'en-US';
+}
+
+function speakText(text){
+  const t = (text || '').trim();
+  if (!t){ addMsg('❌ 请先输入要朗读的单词或句子', 'bot'); return; }
+  if (!('speechSynthesis' in window)){
+    addMsg('❌ 当前设备不支持语音朗读（建议用 Chrome/Edge，或手机系统开启 TTS）', 'bot');
+    return;
+  }
+  const synth = window.speechSynthesis;
+  synth.cancel();
+  const u = new SpeechSynthesisUtterance(t);
+  u.lang = detectLang(t);
+  u.rate = 0.85;
+  const voices = synth.getVoices();
+  if (voices.length){
+    const langPrefix = u.lang.toLowerCase().split('-')[0];
+    const v = voices.find(v => v.lang && v.lang.toLowerCase().replace('_', '-').startsWith(langPrefix))
+           || voices.find(v => v.lang && v.lang.toLowerCase().replace('_', '-').startsWith('zh'));
+    if (v) u.voice = v;
+  }
+  synth.speak(u);
+}
+
+if ('speechSynthesis' in window){
+  window.speechSynthesis.getVoices();
+  window.speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices();
+}
+
 async function importTexts(texts){
   if (!texts || !texts.length){ addMsg('❌ 没有可导入的文本', 'bot'); return; }
   autoScroll = true;
@@ -1625,6 +1667,17 @@ $('#username').addEventListener('keydown', e => { if (e.key === 'Enter') $('#log
 $('#password').addEventListener('keydown', e => { if (e.key === 'Enter') $('#loginBtn').click(); });
 $('#send').addEventListener('click', send);
 $('#input').addEventListener('keydown', e => { if (e.key === 'Enter') send(); });
+$('#speakBtn').addEventListener('click', () => {
+  const text = $('#input').value.trim();
+  if (!text){ addMsg('❌ 请先在输入框输入要朗读的内容', 'bot'); return; }
+  speakText(text);
+});
+$('#messages').addEventListener('dblclick', () => {
+  try {
+    const sel = (window.getSelection() ? window.getSelection().toString() : '').trim();
+    if (sel) speakText(sel);
+  } catch(e){}
+});
 $('#themeBtn').addEventListener('click', (e) => {
   e.stopPropagation();
   toggleThemePanel();
