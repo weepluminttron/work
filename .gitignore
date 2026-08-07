@@ -33,3 +33,8 @@ logs/
 # 虚拟环境
 venv/
 bot_env/
+
+# Capacitor / Android 构建产物
+node_modules/
+android/
+*.apk
