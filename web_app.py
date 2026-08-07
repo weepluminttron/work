@@ -573,6 +573,11 @@ def icon_512():
     return send_file(os.path.join(WEB_DIR, "icon-512.png"), mimetype="image/png")
 
 
+@app.route("/mascot.png")
+def mascot():
+    return send_file(os.path.join(WEB_DIR, "mascot.png"), mimetype="image/png")
+
+
 @app.route("/api/status")
 def status():
     user = session.get("username")
