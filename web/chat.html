@@ -262,8 +262,10 @@
 
   /* ===== 手机端豆包风格 ===== */
   .mobile-brand { display: none; }
+  .back-btn { display: none; }
   @media (max-width: 899px) {
     .mobile-brand { display: flex; align-items: center; gap: 6px; font-size: 15px; font-weight: 700; color: var(--text); }
+    .back-btn { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border: none; border-radius: 50%; background: var(--primary-soft); color: var(--primary); font-size: 16px; cursor: pointer; }
     .header-tabs { display: none !important; }
     .conv-title { display: none !important; }
     .subnav { display: none; }
@@ -318,6 +320,7 @@
     </aside>
     <div class="main-col">
       <header>
+        <button id="backBtn" class="back-btn hidden" title="返回对话">←</button>
         <span class="mobile-brand">📚 学习助手</span>
         <div class="conv-title" id="convTitle">新对话</div>
         <div class="tabs header-tabs">
@@ -969,6 +972,10 @@ function switchTab(name){
   const footer = document.querySelector('footer');
   if (wbar) wbar.classList.toggle('hidden', !chat);
   if (footer) footer.classList.toggle('hidden', !chat);
+  const backBtn = $('#backBtn');
+  const brand = document.querySelector('.mobile-brand');
+  if (backBtn) backBtn.classList.toggle('hidden', chat);
+  if (brand) brand.classList.toggle('hidden', !chat);
   if (!chat) $('#scrollDown').classList.add('hidden');
   if (files) loadFiles();
   if (market) loadMarket();
@@ -1385,6 +1392,7 @@ window.addEventListener('appinstalled', () => {
 $('#tabChat').addEventListener('click', () => switchTab('chat'));
 $('#tabFiles').addEventListener('click', () => switchTab('files'));
 $('#tabMarket').addEventListener('click', () => switchTab('market'));
+$('#backBtn').addEventListener('click', () => switchTab('chat'));
 document.querySelectorAll('.side-main').forEach(b => b.addEventListener('click', () => switchTab(b.dataset.view)));
 $('#newChatBtn').addEventListener('click', () => newConversation());
 $('#newChatMobile').addEventListener('click', () => newConversation());
