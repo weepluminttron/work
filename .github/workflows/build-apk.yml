@@ -1,0 +1,43 @@
+name: Build Android APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      server_url:
+        description: 学习助手服务器地址（如 https://xxx.com 或 http://IP:8090）
+        required: true
+        default: "http://123.207.58.61:8090"
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Install Capacitor
+        run: npm install
+
+      - name: Set server URL
+        run: jq --arg u "${{ inputs.server_url }}" '.server.url=$u | .server.cleartext=true' capacitor.config.json > tmp.json && mv tmp.json capacitor.config.json
+
+      - name: Generate Android project
+        run: npx cap add android && npx cap sync android
+
+      - name: Build debug APK
+        working-directory: android
+        run: ./gradlew assembleDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: study-agent-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk

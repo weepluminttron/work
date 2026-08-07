@@ -1,0 +1,9 @@
+{
+  "appId": "com.studyagent.app",
+  "appName": "学习助手",
+  "webDir": "web",
+  "server": {
+    "url": "http://123.207.58.61:8090",
+    "cleartext": true
+  }
+}
