@@ -12,7 +12,7 @@
    - 或以后上了 HTTPS：`https://study.example.com`
 5. 点绿色 **Run workflow** 开始构建（约 5-10 分钟）
 6. 构建完成后，点击该次运行记录 → 底部 **Artifacts** → 下载 **study-agent-apk**
-7. 解压得到 `app-debug.apk`，传到手机安装即可
+7. 解压得到两个文件，**优先安装 `app-release.apk`**（正式版，小米等系统更容易通过）；`app-debug.apk` 是调试版备用
 
 > 提示：`app-debug.apk` 是调试签名包，自己使用没问题；上架应用商店需要正式签名（release）。
 
