@@ -228,7 +228,14 @@ def _run_upload_task(task_id: str, filename: str, file_bytes: bytes, user: str =
     try:
         user_context.set_current_user(user or ADMIN_USERNAME)
         import file_parser
-        supported, doc_text = file_parser.extract_file_text(filename, file_bytes)
+        if filename.lower().endswith(".txt"):
+            try:
+                doc_text = file_bytes.decode("utf-8", "replace")
+                supported = True
+            except Exception:
+                supported, doc_text = False, ""
+        else:
+            supported, doc_text = file_parser.extract_file_text(filename, file_bytes)
         if not supported:
             _finish_task(task_id, "error", error="不支持的文件格式，请上传 PDF/DOC/DOCX/PPTX 或图片（JPG/PNG 等）")
             return
@@ -267,6 +274,41 @@ def _run_upload_task(task_id: str, filename: str, file_bytes: bytes, user: str =
         traceback.print_exc()
         print(f"📱网页版文件处理异常：{e}")
         _finish_task(task_id, "error", error=f"处理失败：{e}")
+
+
+def _run_text_task(task_id: str, texts: list, user: str = None):
+    """后台批量导入文本：每段文本自动归档并加入知识库"""
+    try:
+        user_context.set_current_user(user or ADMIN_USERNAME)
+        from llm_summary import auto_extract_archive_info, ai_simplify_filename
+        from archive_db import archive_file
+        from vector_kb import add_archive_to_kb
+        results = []
+        ok_count = 0
+        for i, raw in enumerate(texts, start=1):
+            raw = (raw or "").strip()
+            if not raw:
+                continue
+            auto_info = auto_extract_archive_info(raw[:3000])
+            subj = auto_info["subject"]
+            title = ai_simplify_filename(f"文本资料{i}.txt", subj)
+            fname = f"文本-{i}.txt"
+            save_path, new_aid = archive_file(subj, title, raw.encode("utf-8"), fname, raw)
+            try:
+                add_archive_to_kb(new_aid)
+            except Exception as e:
+                print(f"⚠️文本归档入库失败 {new_aid}: {e}")
+            results.append(f"ID {new_aid}｜{subj}｜{title}")
+            ok_count += 1
+        if results:
+            reply = f"✅ 批量导入完成：成功 {ok_count} 份\n" + "\n".join(results)
+        else:
+            reply = "❌ 没有可导入的文本"
+        _finish_task(task_id, "done", reply=reply)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        _finish_task(task_id, "error", error=f"文本导入失败：{e}")
 
 HELP_TEXT = """📚 网页版学习助手指令：
 /list               查看归档清单
@@ -1452,6 +1494,21 @@ def upload():
     task_id = uuid.uuid4().hex[:12]
     _finish_task(task_id, "running")
     threading.Thread(target=_run_upload_task, args=(task_id, filename, file_bytes, session.get("username") or ADMIN_USERNAME), daemon=True).start()
+    return jsonify({"ok": True, "task_id": task_id, "status": "running"})
+
+
+@app.route("/api/text_import", methods=["POST"])
+@login_required
+def text_import():
+    data = request.get_json(silent=True) or {}
+    texts = [str(t) for t in (data.get("texts") or []) if str(t).strip()]
+    if not texts:
+        return jsonify({"ok": False, "error": "没有可导入的文本"}), 400
+    print(f"📱网页版收到批量文本：{len(texts)} 段")
+    _prune_tasks()
+    task_id = uuid.uuid4().hex[:12]
+    _finish_task(task_id, "running")
+    threading.Thread(target=_run_text_task, args=(task_id, texts, session.get("username") or ADMIN_USERNAME), daemon=True).start()
     return jsonify({"ok": True, "task_id": task_id, "status": "running"})
 
 

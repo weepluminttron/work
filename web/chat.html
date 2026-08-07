@@ -298,6 +298,17 @@
   .login-mascot { width: 76px; height: 76px; border-radius: 20px; margin: 0 auto 12px; display: block; box-shadow: var(--shadow); }
   .logo img { width: 100%; height: 100%; border-radius: 9px; display: block; }
   .msg.bot::before { content: ''; background: url('/mascot.png') center/cover no-repeat; border-radius: 50%; }
+  .drop-overlay { position: fixed; inset: 0; z-index: 80; background: rgba(74, 125, 255, .15); display: flex; align-items: center; justify-content: center; pointer-events: none; }
+  .drop-box { background: var(--card); border: 2px dashed var(--primary); border-radius: 16px; padding: 28px 40px; font-size: 16px; color: var(--primary); font-weight: 600; box-shadow: var(--shadow); }
+  .text-modal { position: fixed; inset: 0; z-index: 75; background: rgba(0, 0, 0, .4); display: flex; align-items: center; justify-content: center; padding: 20px; }
+  .text-modal-card { background: var(--card); border-radius: 16px; padding: 18px; width: 100%; max-width: 520px; box-shadow: var(--shadow); color: var(--text); }
+  .text-modal-card h3 { margin-bottom: 6px; font-size: 16px; }
+  .text-modal-hint { font-size: 12px; color: var(--text-2); margin-bottom: 10px; }
+  .text-modal-card textarea { width: 100%; height: 180px; border: 1px solid var(--border-2); border-radius: 10px; padding: 10px; font-size: 14px; resize: vertical; background: var(--input-bg); color: var(--text); outline: none; }
+  .text-modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 12px; }
+  .text-modal-actions button { padding: 8px 16px; border: none; border-radius: 10px; cursor: pointer; font-size: 14px; }
+  #textBatchCancel { background: var(--primary-soft); color: var(--primary); }
+  #textBatchOk { background: linear-gradient(135deg, var(--primary), var(--primary-2)); color: #fff; }
 </style>
 </head>
 <body>
@@ -414,6 +425,18 @@
   <div class="conv-list" id="drawerConvList"></div>
   <div class="drawer-groups" id="drawerGroups"></div>
 </aside>
+<div id="dropOverlay" class="drop-overlay hidden"><div class="drop-box">📥 松开即可上传 / 导入</div></div>
+<div id="textModal" class="text-modal hidden">
+  <div class="text-modal-card">
+    <h3>📝 批量添加文本</h3>
+    <p class="text-modal-hint">每段之间用空行或“---”分隔，每段会作为一份文档自动归档</p>
+    <textarea id="textBatchInput" placeholder="第一段文本…&#10;&#10;第二段文本…&#10;&#10;---&#10;&#10;第三段文本…"></textarea>
+    <div class="text-modal-actions">
+      <button id="textBatchCancel">取消</button>
+      <button id="textBatchOk">导入</button>
+    </div>
+  </div>
+</div>
 <script>
 const $ = s => document.querySelector(s);
 
@@ -1361,12 +1384,17 @@ function startOptions(next){
 }
 
 async function upload(){
+  const input = $('#fileInput');
+  const files = Array.from(input.files || []);
+  input.value = '';
+  if (!files.length) return;
+  files.slice(0, 10).forEach(uploadFile);
+}
+
+async function uploadFile(file){
   autoScroll = true;
   $('#scrollDown').classList.add('hidden');
-  const input = $('#fileInput');
-  const file = input.files[0];
-  if (!file) return;
-  addMsg('📎 ' + file.name, 'user');
+  addMsg('➕ ' + file.name, 'user');
   const fd = new FormData();
   fd.append('file', file);
   try {
@@ -1380,8 +1408,69 @@ async function upload(){
   } catch (e) {
     addMsg('❌ 网络错误：' + e.message, 'bot');
   }
-  input.value = '';
 }
+
+async function importTexts(texts){
+  if (!texts || !texts.length){ addMsg('❌ 没有可导入的文本', 'bot'); return; }
+  autoScroll = true;
+  $('#scrollDown').classList.add('hidden');
+  try {
+    const r = await fetch('/api/text_import', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({texts: texts})
+    });
+    const d = await safeJson(r);
+    if (!d || !d.ok || !d.task_id){ addMsg('❌ ' + ((d && d.error) || '导入失败'), 'bot'); return; }
+    const result = await pollTask(d.task_id, '正在批量导入文本…');
+    if (result) addMsg(result.reply, 'bot');
+  } catch(e){
+    addMsg('❌ 网络错误：' + e.message, 'bot');
+  }
+}
+
+function openTextModal(){
+  $('#textModal').classList.remove('hidden');
+  $('#textBatchInput').value = '';
+  $('#textBatchInput').focus();
+}
+
+function closeTextModal(){
+  $('#textModal').classList.add('hidden');
+}
+
+function submitTextBatch(){
+  const raw = $('#textBatchInput').value || '';
+  const texts = raw.split(/\n\s*\n+|---/).map(s => s.trim()).filter(Boolean);
+  closeTextModal();
+  if (texts.length) importTexts(texts);
+  else addMsg('❌ 请至少输入一段文本', 'bot');
+}
+
+let dragDepth = 0;
+window.addEventListener('dragenter', (e) => {
+  e.preventDefault();
+  dragDepth++;
+  $('#dropOverlay').classList.remove('hidden');
+});
+window.addEventListener('dragleave', (e) => {
+  e.preventDefault();
+  dragDepth--;
+  if (dragDepth <= 0){
+    dragDepth = 0;
+    $('#dropOverlay').classList.add('hidden');
+  }
+});
+window.addEventListener('dragover', (e) => e.preventDefault());
+window.addEventListener('drop', (e) => {
+  e.preventDefault();
+  dragDepth = 0;
+  $('#dropOverlay').classList.add('hidden');
+  const files = Array.from(e.dataTransfer.files || []);
+  if (files.length){ files.slice(0, 10).forEach(uploadFile); return; }
+  const text = (e.dataTransfer.getData('text/plain') || '').trim();
+  if (text) importTexts([text]);
+});
 
 async function init(){
   loadSavedLogin();
@@ -1543,6 +1632,8 @@ $('#drawerBtn').addEventListener('click', () => openDrawer());
 $('#drawerClose').addEventListener('click', () => closeDrawer());
 $('#drawerMask').addEventListener('click', () => closeDrawer());
 $('#drawerNewChat').addEventListener('click', () => { closeDrawer(); newConversation(); });
+$('#textBatchOk').addEventListener('click', submitTextBatch);
+$('#textBatchCancel').addEventListener('click', closeTextModal);
 $('#fileSearch').addEventListener('input', (e) => {
   fileSearchKw = e.target.value.trim().toLowerCase();
   if (!$('#fileView').classList.contains('hidden')) loadFiles();
@@ -1588,7 +1679,8 @@ const MENU = {
     {label: '🗂 合并归档', next: 'merge'},
     {label: '📄 合并来源', next: 'mergeinfo'},
     {label: '🗑 删除文档', next: 'delete'},
-    {label: '➕ 上传文件', action: 'upload'}
+    {label: '➕ 上传文件', action: 'upload'},
+    {label: '📝 批量添加文本', action: 'textbatch'}
   ],
   more: [
     {label: '📋 指令清单', cmd: '/help'},
@@ -1599,6 +1691,13 @@ const MENU = {
     {label: '🧹 清空对话记忆', cmd: '/clear'}
   ]
 };
+
+function runMenuAction(item){
+  if (item.action === 'upload'){ $('#fileInput').click(); return; }
+  if (item.action === 'textbatch'){ openTextModal(); return; }
+  if (item.next){ startOptions(item.next); return; }
+  runChat(item.cmd);
+}
 
 function renderSubNav(){
   const nav = $('#subnav');
@@ -1618,9 +1717,7 @@ function renderSubNav(){
       b.textContent = item.label;
       b.addEventListener('click', () => {
         switchTab('chat');
-        if (item.action === 'upload'){ $('#fileInput').click(); return; }
-        if (item.next){ startOptions(item.next); return; }
-        runChat(item.cmd);
+        runMenuAction(item);
       });
       g.appendChild(b);
     });
@@ -1646,9 +1743,7 @@ function showSubmenu(group){
     b.textContent = item.label;
     b.addEventListener('click', () => {
       hideSubmenu();
-      if (item.action === 'upload'){ $('#fileInput').click(); return; }
-      if (item.next){ startOptions(item.next); return; }
-      runChat(item.cmd);
+      runMenuAction(item);
     });
     box.appendChild(b);
   });
@@ -1672,9 +1767,7 @@ function renderMoreMenu(){
       b.addEventListener('click', () => {
         hideSubmenu();
         switchTab('chat');
-        if (item.action === 'upload'){ $('#fileInput').click(); return; }
-        if (item.next){ startOptions(item.next); return; }
-        runChat(item.cmd);
+        runMenuAction(item);
       });
       box.appendChild(b);
     });
@@ -1710,9 +1803,7 @@ function renderDrawerGroups(){
       b.addEventListener('click', () => {
         closeDrawer();
         switchTab('chat');
-        if (item.action === 'upload'){ $('#fileInput').click(); return; }
-        if (item.next){ startOptions(item.next); return; }
-        runChat(item.cmd);
+        runMenuAction(item);
       });
       box.appendChild(b);
     });
