@@ -107,3 +107,14 @@ def update_title(cid: str, title: str) -> bool:
         conv["updated"] = time.time()
         _save(data)
     return True
+
+
+def delete_conversation(cid: str) -> bool:
+    """删除对话"""
+    with _lock:
+        data = _load()
+        if cid not in data:
+            return False
+        del data[cid]
+        _save(data)
+    return True

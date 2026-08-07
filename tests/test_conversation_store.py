@@ -43,6 +43,12 @@ class ConversationStoreTest(unittest.TestCase):
         self.assertTrue(got["auto_titled"])
         self.assertFalse(conversation_store.update_title("not_exist", "x"))
 
+    def test_delete_conversation(self):
+        conv = conversation_store.create_conversation()
+        self.assertTrue(conversation_store.delete_conversation(conv["id"]))
+        self.assertIsNone(conversation_store.get_conversation(conv["id"]))
+        self.assertFalse(conversation_store.delete_conversation(conv["id"]))
+
 
 if __name__ == "__main__":
     unittest.main()

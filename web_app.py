@@ -533,6 +533,16 @@ def conversation_detail(cid):
     return jsonify({"ok": True, "conversation": conv})
 
 
+@app.route("/api/conversations/<cid>", methods=["DELETE"])
+@login_required
+def delete_conversation(cid):
+    from conversation_store import delete_conversation as _delete
+    ok = _delete(cid)
+    if not ok:
+        return jsonify({"ok": False, "error": "对话不存在"}), 404
+    return jsonify({"ok": True})
+
+
 @app.route("/")
 def index():
     return send_file(os.path.join(WEB_DIR, "chat.html"))
