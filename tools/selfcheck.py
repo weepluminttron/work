@@ -14,10 +14,12 @@ except Exception:
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PY_FILES = [
-    "archive_db.py", "chat_memory.py", "config.py", "feishu_bot.py",
-    "feishu_commands.py", "file_parser.py", "folder_watcher.py",
-    "llm_summary.py", "quiz_logic.py", "quiz_store.py", "review_scheduler.py",
-    "study_service.py", "vector_kb.py", "web_app.py", "wrong_book.py",
+    "archive_db.py", "chat_memory.py", "config.py", "conversation_store.py",
+    "feishu_bot.py", "feishu_commands.py", "file_parser.py", "folder_watcher.py",
+    "goal_store.py", "llm_cache.py", "llm_summary.py", "quiz_logic.py",
+    "quiz_store.py", "review_scheduler.py", "skill_market_store.py",
+    "study_service.py", "user_auth.py", "user_context.py", "vector_kb.py",
+    "web_app.py", "wrong_book.py",
     "tools/selfcheck.py",
 ]
 

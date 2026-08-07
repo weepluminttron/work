@@ -2,7 +2,6 @@ import sqlite3
 import os
 import time
 from typing import Optional, List, Dict
-import config
 import user_context
 
 

@@ -6,7 +6,7 @@ import time
 from datetime import datetime, timedelta
 import requests
 from apscheduler.schedulers.background import BackgroundScheduler
-from config import MEMORY_DB_PATH, REVIEW_PUSH_HOUR, FEISHU_WEBHOOK
+from config import REVIEW_PUSH_HOUR, FEISHU_WEBHOOK
 import user_context
 
 DB_LOCK = threading.Lock()
