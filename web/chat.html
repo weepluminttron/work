@@ -243,6 +243,7 @@
   .conv-item-label { flex: 1; min-width: 0; text-align: left; padding: 8px 6px; border: none; background: transparent; color: inherit; font-size: 12.5px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .conv-del { border: none; background: transparent; color: var(--text-3); cursor: pointer; font-size: 12px; padding: 4px 6px; border-radius: 6px; flex: 0 0 auto; }
   .conv-del:hover { color: #e5484d; background: var(--primary-soft); }
+  .conv-del.arming { color: #e5484d; background: #ffe9e9; font-weight: 600; }
   .conv-item:hover { background: var(--primary-soft); }
   .conv-item.active { background: var(--primary-soft); color: var(--primary); font-weight: 600; }
   .conv-title { display: none; font-size: 15px; font-weight: 700; color: var(--text); }
@@ -1075,7 +1076,7 @@ function renderConvList(convs){
       del.className = 'conv-del';
       del.textContent = '🗑';
       del.title = '删除对话';
-      del.addEventListener('click', (e) => { e.stopPropagation(); deleteConversation(c.id); });
+      del.addEventListener('click', (e) => { e.stopPropagation(); deleteConversation(c.id, del); });
       row.appendChild(label);
       row.appendChild(del);
       list.appendChild(row);
@@ -1083,8 +1084,22 @@ function renderConvList(convs){
   });
 }
 
-async function deleteConversation(cid){
-  if (!window.confirm('确定删除这个对话吗？删除后不可恢复')) return;
+async function deleteConversation(cid, btn){
+  // 两步确认：第一次点击变为“确认?”，3秒内再点才真正删除（避免弹窗被拦截）
+  if (!btn || btn.dataset.arm !== '1'){
+    if (btn){
+      btn.dataset.arm = '1';
+      btn.textContent = '确认?';
+      btn.classList.add('arming');
+      setTimeout(() => {
+        btn.textContent = '🗑';
+        btn.dataset.arm = '';
+        btn.classList.remove('arming');
+      }, 3000);
+    }
+    return;
+  }
+  btn.dataset.arm = '';
   try {
     const r = await fetch('/api/conversations/' + encodeURIComponent(cid), {method: 'DELETE'});
     const d = await r.json();
