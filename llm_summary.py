@@ -200,6 +200,32 @@ def generate_long_term_plan(subject: str, start_level: str, target_level: str, y
         for i in range(4)
     ]
 
+
+def generate_skill_package(topic: str):
+    """AI生成技能包定义：知识点/前置概念/易错点/示例题"""
+    import json
+    import re
+    prompt = f"""你是教育产品策划。请为学习主题「{topic}」设计一个可上架的学习技能包。
+只输出 JSON 对象，不要任何其他文字，格式：
+{{"title":"技能名称","icon":"一个emoji","desc":"一句话介绍","tags":["标签"],"subject":"学科","mode":"讲解/练习/测验/对战/背诵","skills":["技能点1"],"prereq":["前置概念"],"misconceptions":["易错点"],"seeds":[{{"q":"示例题","a":"答案"}}]}}
+要求：skills 4-6个；prereq 1-3个；misconceptions 1-3个；seeds 2-3道带答案的示例题。"""
+    resp = llm_request(prompt, timeout=60)
+    m = re.search(r"\{.*\}", resp, re.DOTALL)
+    if not m:
+        return None
+    try:
+        data = json.loads(m.group())
+    except Exception:
+        return None
+    if not isinstance(data, dict) or not data.get("title"):
+        return None
+    data["skills"] = [str(s) for s in data.get("skills", []) if s][:6]
+    data["prereq"] = [str(s) for s in data.get("prereq", []) if s][:3]
+    data["misconceptions"] = [str(s) for s in data.get("misconceptions", []) if s][:3]
+    seeds = data.get("seeds") or []
+    data["seeds"] = [s for s in seeds if isinstance(s, dict)][:3]
+    return data
+
 def auto_extract_archive_info(pdf_text: str) -> dict:
     """AI识别文档科目和核心知识点（网页版/飞书版共用）"""
     import re

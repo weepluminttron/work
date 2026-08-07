@@ -384,6 +384,7 @@
       <div id="marketView" class="market-view hidden">
         <div class="market-container">
           <div class="market-search-row">
+            <button id="marketGenBtn" class="chip" style="margin-right:auto;">✨ AI 生成技能</button>
             <div class="market-search">🔍 <input id="marketSearch" placeholder="搜索技能包 / 数据集…"></div>
           </div>
           <div class="chips" id="marketChips"></div>
@@ -1550,6 +1551,7 @@ $('#marketSearch').addEventListener('input', (e) => {
   marketKw = e.target.value.trim().toLowerCase();
   if (marketData) renderMarket();
 });
+$('#marketGenBtn').addEventListener('click', () => { switchTab('chat'); runChat('/market'); });
 $('#messages').addEventListener('scroll', () => {
   const m = $('#messages');
   const dist = m.scrollHeight - m.scrollTop - m.clientHeight;
@@ -1592,6 +1594,7 @@ const MENU = {
     {label: '📋 指令清单', cmd: '/help'},
     {label: '✍️ 文本润色', next: 'polish'},
     {label: '📺 视频搜索', cmd: '/视频'},
+    {label: '✨ AI 生成技能', cmd: '/market'},
     {label: '🔄 重建知识库', cmd: '/rebuild', admin: true},
     {label: '🧹 清空对话记忆', cmd: '/clear'}
   ]

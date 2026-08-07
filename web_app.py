@@ -277,6 +277,7 @@ HELP_TEXT = """📚 网页版学习助手指令：
 /clear              清空对话记忆（开始新话题）
 /goals              长期学习目标列表
 /goal 3年 德语 B2    创建长期目标（AI生成阶段规划）
+/market 主题          AI生成自定义技能包并加入技能市场
 /视频 关键词          搜索B站视频链接（示例：/视频 德语语法）
 /cards id 3         把归档文档生成背诵卡片
 /test id 3          把归档文档生成自测题
@@ -425,6 +426,51 @@ MARKET_PACKAGES = [
         "tags": ["语言", "入门"], "subject": "法语",
         "skills": ["发音规则", "基础问候", "数字与时间", "餐厅购物", "旅行会话"],
     },
+    {
+        "id": "pkg_wordbattle", "type": "package", "title": "德语单词对战",
+        "icon": "⚔️", "desc": "和AI对战式记单词：拼写挑战、词性判断、近义辨析，边玩边记。",
+        "tags": ["语言", "对战"], "subject": "德语", "mode": "对战",
+        "skills": ["高频词汇速记", "词性判断", "拼写挑战", "近义辨析", "对战积分"],
+        "prereq": ["德语字母与发音"],
+        "misconceptions": ["名词词性记混", "拼写相近词混淆"],
+        "seeds": [
+            {"q": "“der Tisch”的词性是什么？", "a": "阳性（der）"},
+            {"q": "拼写：图书馆（B__liothek）", "a": "Bibliothek"},
+        ],
+    },
+    {
+        "id": "pkg_socratic", "type": "package", "title": "解题讲解（苏格拉底式）",
+        "icon": "🦉", "desc": "AI不直接给答案，用提问引导你自己推导出解题思路。",
+        "tags": ["学习", "讲解"], "subject": "通用", "mode": "讲解",
+        "skills": ["审题引导", "分步拆解", "自我验证", "举一反三", "错因复盘"],
+        "prereq": ["基础概念"],
+        "misconceptions": ["跳步导致算错"],
+        "seeds": [
+            {"q": "一辆车2小时行驶160km，平均速度？", "a": "80km/h"},
+        ],
+    },
+    {
+        "id": "pkg_recite", "type": "package", "title": "知识点背诵记忆",
+        "icon": "🧠", "desc": "核心定义+记忆口诀+间隔复习+自测默写，把知识点背牢。",
+        "tags": ["学习", "背诵"], "subject": "通用", "mode": "背诵",
+        "skills": ["核心定义", "记忆口诀", "间隔复习", "自测默写", "易错提醒"],
+        "prereq": ["理解概念"],
+        "misconceptions": ["死记硬背不理解"],
+        "seeds": [
+            {"q": "光合作用的场所？", "a": "叶绿体"},
+        ],
+    },
+    {
+        "id": "pkg_reading", "type": "package", "title": "英语阅读精读训练",
+        "icon": "📖", "desc": "主旨把握、细节定位、推理判断、词汇积累，四步精读一篇短文。",
+        "tags": ["语言", "练习"], "subject": "英语", "mode": "练习",
+        "skills": ["主旨把握", "细节定位", "推理判断", "长难句分析", "词汇积累"],
+        "prereq": ["基础语法"],
+        "misconceptions": ["凭印象答题不看原文"],
+        "seeds": [
+            {"q": "文章主旨题：本文主要讨论了什么？", "a": "围绕主题句概括"},
+        ],
+    },
 ]
 
 MARKET_DATASETS = [
@@ -459,10 +505,12 @@ def _market_items_with_added(items, existing_items):
 @login_required
 def market():
     from archive_db import get_all_archive_items
+    from skill_market_store import list_skills
     existing_items = get_all_archive_items()
+    packages = MARKET_PACKAGES + list_skills()
     return jsonify({
         "ok": True,
-        "packages": _market_items_with_added(MARKET_PACKAGES, existing_items),
+        "packages": _market_items_with_added(packages, existing_items),
         "datasets": _market_items_with_added(MARKET_DATASETS, existing_items),
     })
 
@@ -472,7 +520,9 @@ def market():
 def market_add():
     data = request.get_json(silent=True) or {}
     item_id = data.get("id")
-    item = next((x for x in MARKET_PACKAGES + MARKET_DATASETS if x["id"] == item_id), None)
+    from skill_market_store import list_skills
+    candidates = MARKET_PACKAGES + MARKET_DATASETS + list_skills()
+    item = next((x for x in candidates if x["id"] == item_id), None)
     if not item:
         return jsonify({"ok": False, "error": "未找到该技能包"})
     from archive_db import get_all_archive_items, archive_file
@@ -481,9 +531,17 @@ def market_add():
     if fname in existing:
         return jsonify({"ok": True, "added": True, "already": True})
     skills_text = "\n".join(f"- {s}" for s in item.get("skills", []))
+    prereq_text = "\n".join(f"- {s}" for s in item.get("prereq", []))
+    miscon_text = "\n".join(f"- {s}" for s in item.get("misconceptions", []))
+    seeds_text = "\n".join(f"- {s.get('q', '')}（答案：{s.get('a', '')}）" for s in item.get("seeds", []))
+    mode = item.get("mode", "练习")
     doc_text = (
         f"# {item['title']}\n\n{item.get('desc', '')}\n\n"
         f"## 包含技能\n{skills_text}\n\n"
+        f"## 前置概念\n{prereq_text or '（无）'}\n\n"
+        f"## 易错点\n{miscon_text or '（无）'}\n\n"
+        f"## 示例题\n{seeds_text or '（无）'}\n\n"
+        f"## 学习方式\n{mode}\n\n"
         "## 学习建议\n按技能顺序逐个掌握，每个技能安排 1-2 天，配合自测题、背诵卡片和每日任务巩固。"
     )
     save_path, new_aid = archive_file(
@@ -1020,6 +1078,10 @@ def handle_web_command(text: str) -> str:
     if cmd == "/goal":
         from study_service import goal_cmd_text
         return goal_cmd_text(text)
+
+    if cmd == "/market":
+        from study_service import market_generate_text
+        return market_generate_text(text)
 
     if cmd == "/wrong":
         from wrong_book import add_wrong_paper, clear_wrong, get_wrong, list_wrong

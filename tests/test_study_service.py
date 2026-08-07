@@ -98,6 +98,30 @@ class StudyServiceTest(unittest.TestCase):
         self.assertEqual(r2["target_level"], "C1")
         self.assertIsNone(parse_goal_cmd("/goal"))
 
+    def test_market_generate_text(self):
+        import llm_summary
+        def fake_generate(topic):
+            return {
+                "title": "德语单词对战",
+                "icon": "⚔️",
+                "desc": "对战记单词",
+                "tags": ["语言"],
+                "subject": "德语",
+                "mode": "对战",
+                "skills": ["词性判断", "拼写挑战"],
+                "prereq": ["发音"],
+                "misconceptions": ["词性记混"],
+                "seeds": [{"q": "der Tisch?", "a": "阳性"}],
+            }
+        orig = llm_summary.generate_skill_package
+        llm_summary.generate_skill_package = fake_generate
+        try:
+            text = study_service.market_generate_text("/market 德语单词对战")
+            self.assertIn("已生成", text)
+            self.assertIn("德语单词对战", text)
+        finally:
+            llm_summary.generate_skill_package = orig
+
     def test_grade_short_answers_text(self):
         def fake_llm(prompt, timeout=60):
             return '[{"no":1,"judge":"\u6b63\u786e","score":90,"comment":"\u5f88\u597d"},{"no":2,"judge":"\u9519\u8bef","score":40,"comment":"\u6f0f\u4e86\u8981\u70b9"}]'

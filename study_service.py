@@ -288,6 +288,26 @@ def video_cmd_text(raw_cmd: str) -> str:
     return video_links_text(keyword, 5)
 
 
+def market_generate_text(raw_cmd: str) -> str:
+    """AI生成自定义技能包：/market 主题"""
+    topic = raw_cmd.removeprefix("/market").strip()
+    if not topic:
+        return "✨ 用法：/market 主题\n示例：/market 德语单词对战"
+    from llm_summary import generate_skill_package
+    from skill_market_store import add_skill
+    pkg = generate_skill_package(topic)
+    if not pkg:
+        return "❌AI生成技能包失败，请换个主题重试"
+    saved = add_skill(pkg)
+    lines = [
+        f"✨ 新技能包已生成并加入市场：{saved.get('title', '')} {saved.get('icon', '')}",
+        f"📝 {saved.get('desc', '')}",
+        f"🎯 技能：{'、'.join(saved.get('skills', [])[:5])}",
+        f"🧩 模式：{saved.get('mode', '练习')}",
+    ]
+    return "\n".join(lines) + "\n\n去「技能市场」即可添加使用"
+
+
 def goals_text() -> str:
     from goal_store import list_goals
     goals = list_goals()

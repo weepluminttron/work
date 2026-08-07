@@ -15,6 +15,7 @@ conversations.json
 llm_cache.json
 goals.json
 users.json
+custom_skills.json
 study_docs/
 学习笔记/
 chroma_study_kb/
