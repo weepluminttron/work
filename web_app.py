@@ -338,6 +338,7 @@ HELP_TEXT = """📚 网页版学习助手指令：
 /report             学情诊断报告（连续打卡/分科进度/欠账建议）
 /wrong              错题本（查看/记录/清除做错的题）
 /clear              清空对话记忆（开始新话题）
+/restore 对话ID      恢复误删的对话
 /goals              长期学习目标列表
 /goal 3年 德语 B2    创建长期目标（AI生成阶段规划）
 /market 主题          AI生成自定义技能包并加入技能市场
@@ -664,6 +665,16 @@ def delete_conversation(cid):
     return jsonify({"ok": True})
 
 
+@app.route("/api/conversations/<cid>/restore", methods=["POST"])
+@login_required
+def restore_conversation(cid):
+    from conversation_store import restore_conversation as _restore
+    ok = _restore(cid)
+    if not ok:
+        return jsonify({"ok": False, "error": "没有可恢复的对话"}), 404
+    return jsonify({"ok": True})
+
+
 @app.route("/")
 def index():
     return send_file(os.path.join(WEB_DIR, "chat.html"))
@@ -981,6 +992,14 @@ def handle_web_command(text: str) -> str:
         from chat_memory import clear_history
         removed = clear_history("web")
         return "✅ 已清空对话记忆，开始新话题" + (f"（清理 {removed} 条消息）" if removed else "")
+
+    if cmd == "/restore":
+        cid = parts[1] if len(parts) > 1 else ""
+        if not cid:
+            return "用法：/restore 对话ID"
+        from conversation_store import restore_conversation
+        ok = restore_conversation(cid)
+        return "✅ 对话已恢复" if ok else "❌ 没有找到可恢复的对话（可能已被彻底删除）"
 
     if cmd in ("/video", "/视频"):
         from study_service import video_cmd_text

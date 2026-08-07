@@ -49,6 +49,17 @@ class ConversationStoreTest(unittest.TestCase):
         self.assertIsNone(conversation_store.get_conversation(conv["id"]))
         self.assertFalse(conversation_store.delete_conversation(conv["id"]))
 
+    def test_soft_delete_and_restore(self):
+        conv = conversation_store.create_conversation()
+        conversation_store.append_messages(conv["id"], "你好", "你好呀")
+        self.assertTrue(conversation_store.delete_conversation(conv["id"]))
+        self.assertIsNone(conversation_store.get_conversation(conv["id"]))
+        self.assertFalse(conversation_store.restore_conversation("not_exist"))
+        self.assertTrue(conversation_store.restore_conversation(conv["id"]))
+        got = conversation_store.get_conversation(conv["id"])
+        self.assertEqual(len(got["messages"]), 2)
+        self.assertEqual(len(conversation_store.list_conversations()), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

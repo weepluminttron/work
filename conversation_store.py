@@ -8,6 +8,7 @@ import uuid
 
 CONVERSATIONS_FILE = os.getenv("CONVERSATIONS_FILE", "conversations.json")
 _lock = threading.Lock()
+TRASH_KEY = "_trash"
 
 
 def _current_file() -> str:
@@ -39,6 +40,8 @@ def list_conversations() -> list:
         data = _load()
     out = []
     for cid, conv in data.items():
+        if cid == TRASH_KEY:
+            continue
         out.append({
             "id": cid,
             "title": conv.get("title", "新对话"),
@@ -63,6 +66,8 @@ def create_conversation() -> dict:
 def get_conversation(cid: str) -> dict:
     with _lock:
         data = _load()
+    if cid == TRASH_KEY:
+        return None
     conv = data.get(cid)
     if not conv:
         return None
@@ -110,11 +115,29 @@ def update_title(cid: str, title: str) -> bool:
 
 
 def delete_conversation(cid: str) -> bool:
-    """删除对话"""
+    """删除对话（软删除：移入回收站，可恢复）"""
     with _lock:
         data = _load()
         if cid not in data:
             return False
-        del data[cid]
+        conv = data.pop(cid)
+        conv["deleted_at"] = time.time()
+        data.setdefault(TRASH_KEY, {})[cid] = conv
+        _save(data)
+    return True
+
+
+def restore_conversation(cid: str) -> bool:
+    """从回收站恢复对话"""
+    with _lock:
+        data = _load()
+        trash = data.get(TRASH_KEY, {})
+        if cid not in trash:
+            return False
+        conv = trash.pop(cid)
+        conv.pop("deleted_at", None)
+        data[cid] = conv
+        if not trash:
+            data.pop(TRASH_KEY, None)
         _save(data)
     return True

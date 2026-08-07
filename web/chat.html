@@ -1157,6 +1157,7 @@ async function deleteConversation(cid, btn){
     const r = await fetch('/api/conversations/' + encodeURIComponent(cid), {method: 'DELETE'});
     const d = await r.json();
     if (!d || !d.ok){ addMsg('❌ ' + ((d && d.error) || '删除失败'), 'bot'); return; }
+    addMsg('🗑 对话已删除（误删可发送 /restore ' + cid + ' 找回）', 'bot');
     const wasCurrent = currentConvId === cid;
     if (wasCurrent){
       currentConvId = null;
