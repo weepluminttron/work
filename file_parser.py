@@ -132,14 +132,8 @@ def _ocr_call(img) -> list:
 
 
 def ocr_pdf_stream(pdf_bytes: bytes) -> str:
-    """扫描版 PDF OCR（可选，未安装 paddleocr 时返回空）"""
+    """扫描版 PDF OCR：优先 RapidOCR（稳定），PaddleOCR 仅兜底"""
     import fitz
-    try:
-        if _init_ocr_engine() is None:
-            return ""
-    except Exception as e:
-        print(f"OCR加载失败：{e}")
-        return ""
     doc = None
     try:
         doc = fitz.open(stream=pdf_bytes, filetype="pdf")
@@ -148,8 +142,8 @@ def ocr_pdf_stream(pdf_bytes: bytes) -> str:
             pix = page.get_pixmap(dpi=200)
             img_data = pix.tobytes("png")
             pix = None
-            lines = _ocr_call(img_data)
-            ocr_result.append("\n".join(lines))
+            text = _ocr_image_bytes_local(img_data, "image/png")
+            ocr_result.append(text)
         return clean_document_text("\n\n".join(ocr_result))
     finally:
         if doc is not None:
@@ -260,12 +254,14 @@ def _ocr_image_bytes_local(file_bytes: bytes, mime: str = "image/png") -> str:
                 text = clean_document_text("\n".join(lines))
                 print(f"✅RapidOCR识别完成：{len(lines)} 行文字")
                 return text
-            last_local_ocr_error = "RapidOCR未识别出文字，尝试PaddleOCR"
+            last_local_ocr_error = "RapidOCR未识别出文字，图片可能不够清晰或为纯照片"
+            return ""
         except ImportError:
             print("⚠️RapidOCR未安装，改用PaddleOCR（可执行 pip install rapidocr-onnxruntime 安装轻量版）")
         except Exception as e:
             last_local_ocr_error = f"RapidOCR识别失败：{e}"
-            print(f"⚠️RapidOCR识别失败：{e}，尝试PaddleOCR")
+            print(f"⚠️RapidOCR识别失败：{e}")
+            return ""
 
         # 兜底：PaddleOCR
         if _init_ocr_engine() is None:

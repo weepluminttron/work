@@ -1489,7 +1489,7 @@ def upload():
     file_bytes = f.read()
     if not file_bytes:
         return jsonify({"ok": False, "error": "文件内容为空"})
-    print(f"📱网页版收到文件：{filename}（{len(file_bytes)} 字节）")
+    print(f"📱网页版收到文件：{filename}（{len(file_bytes)} 字节）", flush=True)
     _prune_tasks()
     task_id = uuid.uuid4().hex[:12]
     _finish_task(task_id, "running")
@@ -1504,7 +1504,7 @@ def text_import():
     texts = [str(t) for t in (data.get("texts") or []) if str(t).strip()]
     if not texts:
         return jsonify({"ok": False, "error": "没有可导入的文本"}), 400
-    print(f"📱网页版收到批量文本：{len(texts)} 段")
+    print(f"📱网页版收到批量文本：{len(texts)} 段", flush=True)
     _prune_tasks()
     task_id = uuid.uuid4().hex[:12]
     _finish_task(task_id, "running")
