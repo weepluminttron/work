@@ -263,7 +263,16 @@
   /* ===== 手机端豆包风格 ===== */
   .mobile-brand { display: none; }
   .back-btn { display: none; }
+  .drawer-btn { display: none; }
+  .drawer { position: fixed; top: 0; left: 0; bottom: 0; width: min(300px, 85vw); background: var(--card); z-index: 60; display: flex; flex-direction: column; box-shadow: 2px 0 16px rgba(0, 0, 0, .12); }
+  .drawer-mask { position: fixed; inset: 0; background: rgba(0, 0, 0, .4); z-index: 55; }
+  .drawer-head { display: flex; align-items: center; gap: 8px; padding: 16px; font-size: 16px; font-weight: 700; color: var(--text); border-bottom: 1px solid var(--border); }
+  .drawer-head .logo { width: 30px; height: 30px; border-radius: 9px; background: linear-gradient(135deg, var(--primary), var(--primary-2)); display: inline-flex; align-items: center; justify-content: center; font-size: 15px; }
+  #drawerClose { margin-left: auto; border: none; background: var(--primary-soft); color: var(--primary); width: 28px; height: 28px; border-radius: 50%; cursor: pointer; font-size: 14px; }
+  .drawer .conv-list { flex: 0 1 auto; max-height: 30vh; overflow-y: auto; }
+  .drawer-groups { flex: 1; overflow-y: auto; padding: 0 10px 20px; }
   @media (max-width: 899px) {
+    .drawer-btn { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border: none; border-radius: 50%; background: var(--primary-soft); color: var(--primary); font-size: 16px; cursor: pointer; }
     .mobile-brand { display: flex; align-items: center; gap: 6px; font-size: 15px; font-weight: 700; color: var(--text); }
     .back-btn { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border: none; border-radius: 50%; background: var(--primary-soft); color: var(--primary); font-size: 16px; cursor: pointer; }
     .header-tabs { display: none !important; }
@@ -320,6 +329,7 @@
     </aside>
     <div class="main-col">
       <header>
+        <button id="drawerBtn" class="drawer-btn hidden" title="菜单">☰</button>
         <button id="backBtn" class="back-btn hidden" title="返回对话">←</button>
         <span class="mobile-brand">📚 学习助手</span>
         <div class="conv-title" id="convTitle">新对话</div>
@@ -330,7 +340,6 @@
         </div>
         <div class="header-right">
           <button id="installBtn" class="new-chat-icon hidden" title="安装到手机/桌面">📲</button>
-          <button id="newChatMobile" class="new-chat-icon" title="新建对话">＋</button>
           <button id="themeBtn" title="切换界面风格">🎨</button>
           <button id="logout">退出</button>
         </div>
@@ -369,7 +378,6 @@
         <button class="wbtn" data-view="chat">💬 对话</button>
         <button class="wbtn" data-view="files">🗂 归档</button>
         <button class="wbtn" data-view="market">🛍 市场</button>
-        <button class="wbtn" id="moreBtn">📋 更多</button>
       </div>
       <footer>
         <button id="attach" title="上传文件（PDF/DOC/DOCX/PPTX/图片）">📎</button>
@@ -380,6 +388,14 @@
     </div>
   </div>
 </div>
+<div id="drawerMask" class="drawer-mask hidden"></div>
+<aside id="drawer" class="drawer hidden">
+  <div class="drawer-head"><span class="logo">📚</span><span>学习助手</span><button id="drawerClose" title="关闭">✕</button></div>
+  <button id="drawerNewChat" class="new-chat-btn">＋ 新建对话</button>
+  <div class="conv-group">最近对话</div>
+  <div class="conv-list" id="drawerConvList"></div>
+  <div class="drawer-groups" id="drawerGroups"></div>
+</aside>
 <script>
 const $ = s => document.querySelector(s);
 
@@ -1039,16 +1055,19 @@ let currentConvId = null;
 let convsCache = [];
 
 function renderConvList(convs){
-  const list = $('#convList');
-  list.innerHTML = '';
-  convs.forEach(c => {
-    const b = document.createElement('button');
-    b.className = 'conv-item' + (c.id === currentConvId ? ' active' : '');
-    b.dataset.cid = c.id;
-    b.textContent = (c.title || '新对话') + ' · ' + (c.count || 0);
-    b.title = c.title || '新对话';
-    b.addEventListener('click', () => openConversation(c.id));
-    list.appendChild(b);
+  const lists = [$('#convList'), $('#drawerConvList')];
+  lists.forEach(list => {
+    if (!list) return;
+    list.innerHTML = '';
+    convs.forEach(c => {
+      const b = document.createElement('button');
+      b.className = 'conv-item' + (c.id === currentConvId ? ' active' : '');
+      b.dataset.cid = c.id;
+      b.textContent = (c.title || '新对话') + ' · ' + (c.count || 0);
+      b.title = c.title || '新对话';
+      b.addEventListener('click', () => { closeDrawer(); openConversation(c.id); });
+      list.appendChild(b);
+    });
   });
 }
 
@@ -1395,7 +1414,10 @@ $('#tabMarket').addEventListener('click', () => switchTab('market'));
 $('#backBtn').addEventListener('click', () => switchTab('chat'));
 document.querySelectorAll('.side-main').forEach(b => b.addEventListener('click', () => switchTab(b.dataset.view)));
 $('#newChatBtn').addEventListener('click', () => newConversation());
-$('#newChatMobile').addEventListener('click', () => newConversation());
+$('#drawerBtn').addEventListener('click', () => openDrawer());
+$('#drawerClose').addEventListener('click', () => closeDrawer());
+$('#drawerMask').addEventListener('click', () => closeDrawer());
+$('#drawerNewChat').addEventListener('click', () => { closeDrawer(); newConversation(); });
 $('#fileSearch').addEventListener('input', (e) => {
   fileSearchKw = e.target.value.trim().toLowerCase();
   if (!$('#fileView').classList.contains('hidden')) loadFiles();
@@ -1541,6 +1563,45 @@ function toggleMoreMenu(){
   renderMoreMenu();
   box.classList.remove('hidden');
   document.querySelectorAll('.wbtn').forEach(w => w.classList.toggle('active', w.id === 'moreBtn'));
+}
+
+function renderDrawerGroups(){
+  const box = $('#drawerGroups');
+  if (!box) return;
+  box.innerHTML = '';
+  const groupNames = {study: '学习', materials: '资料', more: '更多'};
+  Object.keys(MENU).forEach(group => {
+    const label = document.createElement('div');
+    label.className = 'sidebar-group';
+    label.textContent = groupNames[group] || group;
+    box.appendChild(label);
+    MENU[group].forEach(item => {
+      if (item.admin && currentUser && !currentUser.is_admin) return;
+      const b = document.createElement('button');
+      b.className = 'sidebar-item';
+      b.textContent = item.label;
+      b.addEventListener('click', () => {
+        closeDrawer();
+        switchTab('chat');
+        if (item.action === 'upload'){ $('#fileInput').click(); return; }
+        if (item.next){ startOptions(item.next); return; }
+        runChat(item.cmd);
+      });
+      box.appendChild(b);
+    });
+  });
+}
+
+function openDrawer(){
+  renderConvList(convsCache);
+  renderDrawerGroups();
+  $('#drawer').classList.remove('hidden');
+  $('#drawerMask').classList.remove('hidden');
+}
+
+function closeDrawer(){
+  $('#drawer').classList.add('hidden');
+  $('#drawerMask').classList.add('hidden');
 }
 
 document.querySelectorAll('.wbar .wbtn').forEach(w => w.addEventListener('click', (e) => {
