@@ -80,7 +80,7 @@
   .login-card h1 { font-size: 20px; margin-bottom: 6px; }
   .login-card p { color: var(--text-2); font-size: 13px; margin-bottom: 18px; }
   .login-card input { width: 100%; border: 1px solid var(--border-2); border-radius: 10px; padding: 11px; font-size: 15px; margin-bottom: 12px; outline: none; background: var(--input-bg); color: var(--text); }
-  .remember-row { display: flex; gap: 16px; justify-content: center; margin-bottom: 12px; font-size: 13px; color: var(--text-2); }
+  .remember-row { display: flex; flex-wrap: wrap; gap: 10px 16px; justify-content: center; margin-bottom: 12px; font-size: 13px; color: var(--text-2); }
   .remember-row label { display: flex; align-items: center; gap: 4px; cursor: pointer; }
   .login-card button { width: 100%; background: linear-gradient(135deg, var(--primary), var(--primary-2)); color: #fff; border: none; border-radius: 10px; padding: 11px; font-size: 15px; cursor: pointer; }
   .login-toggle { margin-top: 12px; font-size: 13px; color: var(--text-2); }
@@ -311,6 +311,7 @@
     <div class="remember-row" id="rememberRow">
       <label><input type="checkbox" id="rememberUser"> 记住账号</label>
       <label><input type="checkbox" id="rememberPwd"> 记住密码</label>
+      <label><input type="checkbox" id="rememberAuto"> 自动登录</label>
     </div>
     <button id="loginBtn">登 录</button>
     <div class="login-toggle" id="loginToggle">没有账号？<span>注册一个</span></div>
@@ -1387,7 +1388,12 @@ async function init(){
     const r = await fetch('/api/status');
     const s = await r.json();
     currentUser = s || null;
-    if (s && s.need_login && !s.authed) showLogin(); else showApp();
+    if (s && s.need_login && !s.authed){
+      const auto = await tryAutoLogin();
+      if (!auto) showLogin();
+    } else {
+      showApp();
+    }
   } catch (e) { showLogin(); }
   applyTheme(localStorage.getItem('ui_theme') || 'default');
   if (currentUser && currentUser.authed){
@@ -1402,6 +1408,7 @@ $('#logout').addEventListener('click', async () => {
   currentUser = null;
   currentConvId = null;
   $('#messages').innerHTML = '';
+  try { localStorage.setItem('study_auto_login', '0'); $('#rememberAuto').checked = false; } catch(e){}
   await fetch('/api/logout', {method: 'POST'});
   showLogin();
   renderSubNav();
@@ -1415,6 +1422,7 @@ function loadSavedLogin(){
     if (u){ $('#username').value = u; $('#rememberUser').checked = true; }
     const p = localStorage.getItem('study_password') || '';
     if (p){ $('#password').value = decodeURIComponent(escape(atob(p))); $('#rememberPwd').checked = true; }
+    $('#rememberAuto').checked = localStorage.getItem('study_auto_login') === '1';
   } catch(e){}
 }
 
@@ -1427,7 +1435,34 @@ function saveSavedLogin(username, password){
       localStorage.removeItem('study_password');
     }
     if (!$('#rememberUser').checked) localStorage.removeItem('study_username');
+    localStorage.setItem('study_auto_login', $('#rememberAuto').checked ? '1' : '0');
   } catch(e){}
+}
+
+async function tryAutoLogin(){
+  if (localStorage.getItem('study_auto_login') !== '1') return false;
+  const username = $('#username').value.trim();
+  const password = $('#password').value;
+  if (!username || !password) return false;
+  try {
+    const r = await fetch('/api/login', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({username: username, password: password})
+    });
+    const d = await safeJson(r);
+    if (r.ok && d && d.ok){
+      currentUser = {username: d.username, role: d.role, is_admin: d.is_admin};
+      showApp();
+      loadFiles();
+      loadStats();
+      loadConversations();
+      renderSubNav();
+      return true;
+    }
+  } catch(e){}
+  try { localStorage.setItem('study_auto_login', '0'); $('#rememberAuto').checked = false; } catch(e){}
+  return false;
 }
 
 $('#loginToggle').addEventListener('click', () => {
