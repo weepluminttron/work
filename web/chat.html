@@ -1414,6 +1414,7 @@ async function importTexts(texts){
   if (!texts || !texts.length){ addMsg('❌ 没有可导入的文本', 'bot'); return; }
   autoScroll = true;
   $('#scrollDown').classList.add('hidden');
+  addMsg('📥 导入 ' + texts.length + ' 段文本', 'user');
   try {
     const r = await fetch('/api/text_import', {
       method: 'POST',
@@ -1466,10 +1467,33 @@ window.addEventListener('drop', (e) => {
   e.preventDefault();
   dragDepth = 0;
   $('#dropOverlay').classList.add('hidden');
-  const files = Array.from(e.dataTransfer.files || []);
-  if (files.length){ files.slice(0, 10).forEach(uploadFile); return; }
-  const text = (e.dataTransfer.getData('text/plain') || '').trim();
-  if (text) importTexts([text]);
+  const dt = e.dataTransfer;
+  if (!dt) return;
+  // 收集文件（兼容 files 与 items 两种来源）
+  const files = [];
+  Array.from(dt.files || []).forEach(f => files.push(f));
+  if (dt.items){
+    Array.from(dt.items).forEach(item => {
+      if (item.kind === 'file' && !files.some(f => f.name === (item.getAsFile() || {}).name)){
+        const f = item.getAsFile();
+        if (f) files.push(f);
+      }
+    });
+  }
+  if (files.length){
+    addMsg('📥 拖入 ' + files.length + ' 个文件，开始上传', 'user');
+    files.slice(0, 10).forEach(uploadFile);
+    return;
+  }
+  let text = (dt.getData('text/plain') || '').trim();
+  if (!text){
+    try { text = (window.getSelection() ? window.getSelection().toString() : '').trim(); } catch(e){}
+  }
+  if (text){
+    importTexts([text]);
+    return;
+  }
+  addMsg('❌ 未检测到可导入的文件或文本', 'bot');
 });
 
 async function init(){
