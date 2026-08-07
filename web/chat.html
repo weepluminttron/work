@@ -588,7 +588,15 @@ async function pollTask(taskId, hint){
       tries += 1;
       const r = await fetch('/api/task?task_id=' + encodeURIComponent(taskId));
       const d = await safeJson(r);
-      if (r.status === 401) { removeTyping(typing); showLogin(); return null; }
+      if (r.status === 401) {
+        const st = await fetch('/api/status').then(x => x.json()).catch(() => null);
+        if (st && st.need_login && !st.authed){
+          removeTyping(typing);
+          showLogin();
+          return null;
+        }
+        continue;
+      }
       if (d && d.status === 'done') { removeTyping(typing); return d; }
       if (d && !d.ok) { removeTyping(typing); addMsg('❌ ' + (d.error || '任务失败'), 'bot'); return null; }
       await new Promise(res => setTimeout(res, 1500));
@@ -1104,14 +1112,12 @@ async function deleteConversation(cid, btn){
     const r = await fetch('/api/conversations/' + encodeURIComponent(cid), {method: 'DELETE'});
     const d = await r.json();
     if (!d || !d.ok){ addMsg('❌ ' + ((d && d.error) || '删除失败'), 'bot'); return; }
-    if (currentConvId === cid){
+    const wasCurrent = currentConvId === cid;
+    if (wasCurrent){
       currentConvId = null;
       $('#messages').innerHTML = '';
-      await loadConversations();
-    } else {
-      convsCache = convsCache.filter(c => c.id !== cid);
-      renderConvList(convsCache);
     }
+    await loadConversations();
   } catch(e){
     addMsg('❌ 网络错误：' + e.message, 'bot');
   }
