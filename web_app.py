@@ -55,6 +55,9 @@ def _set_request_ctx():
     g.log_id = uuid.uuid4().hex[:12]
     g.start_time = time.time()
     username = session.get("username") if session.get("auth") else None
+    if session.get("auth") and not username:
+        # 兼容升级前的旧会话：视为管理员
+        username = ADMIN_USERNAME
     user_context.set_current_user(username or "guest")
 
 
@@ -128,7 +131,7 @@ def _finish_task(task_id: str, status: str, **kwargs):
 def _auto_title_conversation(cid: str, conv: dict, user: str = None):
     """根据对话内容生成简短标题（后台异步，不影响回复速度）"""
     try:
-        user_context.set_current_user(user)
+        user_context.set_current_user(user or ADMIN_USERNAME)
         from conversation_store import update_title
         from llm_summary import llm_request
         messages = conv.get("messages") or []
@@ -152,7 +155,7 @@ def _auto_title_conversation(cid: str, conv: dict, user: str = None):
 def _run_task(task_id: str, text: str, conversation_id: str = None, user: str = None):
     """后台执行聊天指令；有会话ID时自动保存对话"""
     try:
-        user_context.set_current_user(user)
+        user_context.set_current_user(user or ADMIN_USERNAME)
         u = user_context.current_user()
         if text.startswith("/"):
             # 任何新指令都会取消“待提交答案”状态
@@ -223,7 +226,7 @@ def _run_task(task_id: str, text: str, conversation_id: str = None, user: str = 
 def _run_upload_task(task_id: str, filename: str, file_bytes: bytes, user: str = None):
     """后台处理文件上传归档"""
     try:
-        user_context.set_current_user(user)
+        user_context.set_current_user(user or ADMIN_USERNAME)
         import file_parser
         supported, doc_text = file_parser.extract_file_text(filename, file_bytes)
         if not supported:
@@ -1123,7 +1126,7 @@ def chat():
     _prune_tasks()
     task_id = uuid.uuid4().hex[:12]
     _finish_task(task_id, "running")
-    threading.Thread(target=_run_task, args=(task_id, text, conversation_id, session.get("username")), daemon=True).start()
+    threading.Thread(target=_run_task, args=(task_id, text, conversation_id, session.get("username") or ADMIN_USERNAME), daemon=True).start()
     return jsonify({"ok": True, "task_id": task_id, "status": "running"})
 
 
@@ -1371,7 +1374,7 @@ def upload():
     _prune_tasks()
     task_id = uuid.uuid4().hex[:12]
     _finish_task(task_id, "running")
-    threading.Thread(target=_run_upload_task, args=(task_id, filename, file_bytes, session.get("username")), daemon=True).start()
+    threading.Thread(target=_run_upload_task, args=(task_id, filename, file_bytes, session.get("username") or ADMIN_USERNAME), daemon=True).start()
     return jsonify({"ok": True, "task_id": task_id, "status": "running"})
 
 
