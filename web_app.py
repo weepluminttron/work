@@ -54,6 +54,8 @@ def _set_request_ctx():
     """每个请求生成日志ID并记录开始时间（对齐 Coze 的访问日志中间件）"""
     g.log_id = uuid.uuid4().hex[:12]
     g.start_time = time.time()
+    if request.method == "POST":
+        print(f"📥 POST {request.path} content-length={request.content_length}", flush=True)
     username = session.get("username") if session.get("auth") else None
     if session.get("auth") and not username:
         # 兼容升级前的旧会话：视为管理员
