@@ -47,3 +47,17 @@ APK 输出在 `android/app/build/outputs/apk/debug/app-debug.apk`。
 - App 只是一个外壳，实际功能仍由你服务器上的学习助手提供，手机需要能访问到服务器
 - 服务器目前是 `http://IP:8090`（明文），App 已开启 cleartext 允许访问；但 Chrome PWA 安装仍然需要 HTTPS
 - 换服务器地址后重新按上面步骤构建一次即可
+
+## 自动更新检测
+
+1. 把新 APK 传到服务器 `apk/` 目录：
+   ```
+   scp app-release.apk ubuntu@服务器IP:/data/study_agent/apk/app-release.apk
+   ```
+2. 在服务器 `.env` 里设置新版本号（大于旧版本即可）：
+   ```
+   APP_VERSION=1.0.1
+   APP_UPDATE_NOTE=本次更新内容（可选）
+   ```
+3. 同步修改网页里的版本号（`web/chat.html` 顶部 `APP_VERSION`）保持一致
+4. 重启服务：网页/App 打开时会自动检测，发现新版弹出“下载更新”提示

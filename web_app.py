@@ -38,6 +38,9 @@ app.secret_key = os.getenv("WEB_SECRET_KEY", "study-assistant-web-secret")
 # 网页版登录密码：在服务器 .env 中设置 WEB_PASSWORD；不设置则无需登录（仅建议自用）
 WEB_PASSWORD = os.getenv("WEB_PASSWORD", "")
 ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin")
+APP_VERSION = os.getenv("APP_VERSION", "1.0.0")
+APK_DIR = os.path.join(BASE_DIR, "apk")
+os.makedirs(APK_DIR, exist_ok=True)
 
 import user_context
 from user_auth import ensure_admin
@@ -376,6 +379,25 @@ def login_required(f):
 def health():
     """健康检查接口（Docker HEALTHCHECK 使用）"""
     return jsonify({"ok": True, "service": "study-agent", "time": int(time.time())})
+
+
+@app.route("/api/version")
+def version_info():
+    """版本信息：网页/App 用于自动更新检测"""
+    return jsonify({
+        "ok": True,
+        "version": APP_VERSION,
+        "apk_url": "/apk/app-release.apk",
+        "note": os.getenv("APP_UPDATE_NOTE", ""),
+    })
+
+
+@app.route("/apk/app-release.apk")
+def apk_download():
+    path = os.path.join(APK_DIR, "app-release.apk")
+    if not os.path.exists(path):
+        return jsonify({"ok": False, "error": "APK 尚未上传到服务器 apk/ 目录"}), 404
+    return send_file(path, mimetype="application/vnd.android.package-archive", as_attachment=True, download_name="study-agent.apk")
 
 
 @app.route("/api/files", methods=["GET"])

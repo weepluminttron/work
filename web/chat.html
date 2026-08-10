@@ -301,6 +301,9 @@
   .msg.bot::before { content: ''; background: url('/mascot.png') center/cover no-repeat; border-radius: 50%; }
   .drop-overlay { position: fixed; inset: 0; z-index: 80; background: rgba(74, 125, 255, .15); display: flex; align-items: center; justify-content: center; pointer-events: none; }
   .drop-box { background: var(--card); border: 2px dashed var(--primary); border-radius: 16px; padding: 28px 40px; font-size: 16px; color: var(--primary); font-weight: 600; box-shadow: var(--shadow); }
+  .update-banner { position: fixed; left: 50%; transform: translateX(-50%); bottom: 96px; z-index: 70; display: flex; align-items: center; gap: 10px; background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 10px 14px; box-shadow: var(--shadow); font-size: 13px; color: var(--text); max-width: 92%; }
+  .update-banner a, .update-banner button { background: linear-gradient(135deg, var(--primary), var(--primary-2)); color: #fff; border: none; border-radius: 10px; padding: 6px 12px; font-size: 12px; cursor: pointer; text-decoration: none; white-space: nowrap; }
+  .update-banner .close { background: var(--primary-soft); color: var(--primary); }
   .text-modal { position: fixed; inset: 0; z-index: 75; background: rgba(0, 0, 0, .4); display: flex; align-items: center; justify-content: center; padding: 20px; }
   .text-modal-card { background: var(--card); border-radius: 16px; padding: 18px; width: 100%; max-width: 520px; box-shadow: var(--shadow); color: var(--text); }
   .text-modal-card h3 { margin-bottom: 6px; font-size: 16px; }
@@ -428,6 +431,7 @@
   <div class="drawer-groups" id="drawerGroups"></div>
 </aside>
 <div id="dropOverlay" class="drop-overlay hidden"><div class="drop-box">📥 松开即可上传 / 导入</div></div>
+<div id="updateBanner" class="update-banner hidden"></div>
 <div id="textModal" class="text-modal hidden">
   <div class="text-modal-card">
     <h3>📝 批量添加文本</h3>
@@ -444,6 +448,7 @@ const $ = s => document.querySelector(s);
 
 let autoScroll = true;
 let currentUser = null;
+const APP_VERSION = '1.0.0';
 
 function updateScrollDown(){
   const m = $('#messages');
@@ -1559,6 +1564,7 @@ async function init(){
     loadConversations();
   }
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
+  checkUpdate();
 }
 
 $('#logout').addEventListener('click', async () => {
@@ -1620,6 +1626,26 @@ async function tryAutoLogin(){
   } catch(e){}
   try { localStorage.setItem('study_auto_login', '0'); $('#rememberAuto').checked = false; } catch(e){}
   return false;
+}
+
+async function checkUpdate(){
+  try {
+    const r = await fetch('/api/version');
+    const d = await r.json();
+    if (!d || !d.ok) return;
+    try { if (sessionStorage.getItem('update_hidden_' + d.version)) return; } catch(e){}
+    if (!d.version || d.version === APP_VERSION) return;
+    const b = $('#updateBanner');
+    b.innerHTML =
+      '<span>发现新版本 v' + d.version + (d.note ? '：' + d.note : '') + '</span>' +
+      (d.apk_url ? '<a href="' + d.apk_url + '" target="_blank" rel="noopener">下载更新</a>' : '') +
+      '<button class="close" id="updateClose">稍后</button>';
+    b.classList.remove('hidden');
+    $('#updateClose').addEventListener('click', () => {
+      b.classList.add('hidden');
+      try { sessionStorage.setItem('update_hidden_' + d.version, '1'); } catch(e){}
+    });
+  } catch(e){}
 }
 
 $('#loginToggle').addEventListener('click', () => {

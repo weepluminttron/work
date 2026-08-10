@@ -39,3 +39,4 @@ bot_env/
 node_modules/
 android/
 *.apk
+apk/
