@@ -80,21 +80,27 @@
   .login-card h1 { font-size: 18px; font-weight: 700; margin-bottom: 6px; }
   .login-sub { color: #8890A6; font-size: 13px; margin-bottom: 22px; }
   .login-field { position: relative; margin-bottom: 12px; }
-  .login-field .field-icon { position: absolute; left: 13px; top: 50%; transform: translateY(-50%); font-size: 15px; opacity: .65; pointer-events: none; }
-  .login-card input { width: 100%; font-family: inherit; font-weight: 400; border: 1px solid transparent; border-radius: 12px; padding: 12px 14px 12px 40px; font-size: 15px; outline: none; background: #F5F7FA; color: var(--text); transition: box-shadow .2s, border-color .2s, background .2s; }
+  .login-field .field-icon { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); font-size: 15px; opacity: .65; pointer-events: none; }
+  .login-card input { width: 100%; font-family: inherit; font-weight: 400; border: 1px solid transparent; border-radius: 12px; padding: 12px 14px 12px 44px; font-size: 15px; outline: none; background: #F5F7FA; color: var(--text); transition: box-shadow .2s, border-color .2s, background .2s; }
   .login-card input:focus { background: var(--card); border-color: var(--primary); box-shadow: 0 0 0 3px rgba(74, 125, 255, .15); }
-  .login-card input:-webkit-autofill { -webkit-box-shadow: 0 0 0 1000px #F5F7FA inset; -webkit-text-fill-color: var(--text); font-family: inherit; }
-  #password { padding-right: 40px; }
+  .login-card input:-webkit-autofill,
+  .login-card input:-webkit-autofill:hover,
+  .login-card input:-webkit-autofill:focus {
+    -webkit-box-shadow: 0 0 0 1000px #F5F7FA inset !important;
+    -webkit-text-fill-color: var(--text);
+    font-family: inherit;
+    transition: background-color 9999s ease-out 0s;
+  }
+  #password { padding-right: 42px; }
   .pwd-eye { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); border: none; background: none; font-size: 15px; cursor: pointer; opacity: .6; padding: 6px; }
   .field-error { color: #e5484d; font-size: 12px; text-align: left; margin: -6px 0 10px 40px; }
-  .remember-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 8px; margin-bottom: 18px; font-size: 12px; color: var(--text-2); }
-  .remember-row label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; justify-self: start; }
-  .remember-row label:last-child { grid-column: 1 / -1; justify-self: center; }
+  .remember-row { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; margin-bottom: 18px; font-size: 12px; color: var(--text-2); }
+  .remember-row label { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }
   .switch { width: 34px; height: 20px; border-radius: 10px; background: #d5dbe8; position: relative; display: inline-block; flex: 0 0 auto; transition: background .2s; }
   .switch::after { content: ''; position: absolute; width: 16px; height: 16px; border-radius: 50%; background: #fff; top: 2px; left: 2px; transition: left .2s; box-shadow: 0 1px 3px rgba(0, 0, 0, .2); }
   .remember-row input:checked + .switch { background: var(--primary); }
   .remember-row input:checked + .switch::after { left: 16px; }
-  .login-card button { width: 100%; background: linear-gradient(135deg, var(--primary), var(--primary-2)); color: #fff; border: none; border-radius: 12px; padding: 12px; font-size: 15px; font-weight: 600; cursor: pointer; box-shadow: 0 8px 18px rgba(0, 0, 0, .15); }
+  .login-card button { width: 100%; background: linear-gradient(135deg, var(--primary), var(--primary-2)); color: #fff; border: none; border-radius: 12px; padding: 12px; font-size: 15px; font-weight: 600; cursor: pointer; box-shadow: 0 6px 14px rgba(0, 0, 0, .15); }
   .login-card button:disabled { opacity: .7; cursor: default; }
   .login-card button:active { transform: scale(.98); }
   .login-toggle { margin-top: 14px; font-size: 13px; color: var(--text-2); }
@@ -106,7 +112,7 @@
     .login-card h1 { font-size: 16px; }
     .login-sub { margin-bottom: 14px; }
     .login-field { margin-bottom: 10px; }
-    .login-card input { padding: 11px 12px 11px 38px; font-size: 14px; }
+    .login-card input { padding: 11px 12px 11px 42px; font-size: 14px; }
   }
   .hidden { display: none !important; }
   #logout, #themeBtn { margin-left: auto; background: rgba(255, 255, 255, .2); border: none; color: #fff; border-radius: 12px; padding: 5px 10px; font-size: 12px; cursor: pointer; }
