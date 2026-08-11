@@ -84,6 +84,9 @@
   .login-card input { width: 100%; font-family: inherit; font-weight: 400; border: 1px solid transparent; border-radius: 12px; padding: 12px 14px 12px 40px; font-size: 15px; outline: none; background: #F5F7FA; color: var(--text); transition: box-shadow .2s, border-color .2s, background .2s; }
   .login-card input:focus { background: var(--card); border-color: var(--primary); box-shadow: 0 0 0 3px rgba(74, 125, 255, .15); }
   .login-card input:-webkit-autofill { -webkit-box-shadow: 0 0 0 1000px #F5F7FA inset; -webkit-text-fill-color: var(--text); font-family: inherit; }
+  #password { padding-right: 40px; }
+  .pwd-eye { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); border: none; background: none; font-size: 15px; cursor: pointer; opacity: .6; padding: 6px; }
+  .field-error { color: #e5484d; font-size: 12px; text-align: left; margin: -6px 0 10px 40px; }
   .remember-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 8px; margin-bottom: 18px; font-size: 12px; color: var(--text-2); }
   .remember-row label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; justify-self: start; }
   .remember-row label:last-child { grid-column: 1 / -1; justify-self: center; }
@@ -92,6 +95,7 @@
   .remember-row input:checked + .switch { background: var(--primary); }
   .remember-row input:checked + .switch::after { left: 16px; }
   .login-card button { width: 100%; background: linear-gradient(135deg, var(--primary), var(--primary-2)); color: #fff; border: none; border-radius: 12px; padding: 12px; font-size: 15px; font-weight: 600; cursor: pointer; box-shadow: 0 8px 18px rgba(0, 0, 0, .15); }
+  .login-card button:disabled { opacity: .7; cursor: default; }
   .login-card button:active { transform: scale(.98); }
   .login-toggle { margin-top: 14px; font-size: 13px; color: var(--text-2); }
   .login-toggle span { color: var(--primary); cursor: pointer; font-weight: 600; }
@@ -344,10 +348,13 @@
       <span class="field-icon">👤</span>
       <input id="username" placeholder="用户名" autocomplete="username">
     </div>
+    <div class="field-error hidden" id="userError"></div>
     <div class="login-field">
       <span class="field-icon">🔒</span>
       <input id="password" type="password" placeholder="访问密码" autocomplete="current-password">
+      <button type="button" id="togglePwd" class="pwd-eye" title="显示/隐藏密码">👁</button>
     </div>
+    <div class="field-error hidden" id="pwdError"></div>
     <div class="remember-row" id="rememberRow">
       <label><input type="checkbox" id="rememberUser" hidden><span class="switch"></span><span>记住账号</span></label>
       <label><input type="checkbox" id="rememberPwd" hidden><span class="switch"></span><span>记住密码</span></label>
@@ -1681,45 +1688,97 @@ $('#loginToggle').addEventListener('click', () => {
   $('#rememberRow').style.display = loginMode === 'login' ? 'flex' : 'none';
 });
 
+function showFieldError(id, msg){
+  const el = $(id);
+  if (msg){ el.textContent = msg; el.classList.remove('hidden'); } else { el.classList.add('hidden'); }
+}
+
+function setLoginLoading(on){
+  $('#loginBtn').disabled = !!on;
+  $('#loginBtn').textContent = on
+    ? (loginMode === 'login' ? '登录中…' : '注册中…')
+    : (loginMode === 'login' ? '登 录' : '注 册');
+}
+
 $('#loginBtn').addEventListener('click', async () => {
+  showFieldError('#userError', '');
+  showFieldError('#pwdError', '');
   const username = $('#username').value.trim();
   const password = $('#password').value;
-  if (loginMode === 'register'){
-    const rr = await fetch('/api/register', {
+  if (!username){
+    showFieldError('#userError', '请输入用户名');
+    $('#username').focus();
+    return;
+  }
+  if (loginMode === 'register' && username.length < 3){
+    showFieldError('#userError', '用户名至少3个字符');
+    $('#username').focus();
+    return;
+  }
+  if (!password){
+    showFieldError('#pwdError', '请输入密码');
+    $('#password').focus();
+    return;
+  }
+  if (loginMode === 'register' && password.length < 6){
+    showFieldError('#pwdError', '密码至少6位');
+    $('#password').focus();
+    return;
+  }
+  setLoginLoading(true);
+  try {
+    if (loginMode === 'register'){
+      const rr = await fetch('/api/register', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({username: username, password: password})
+      });
+      const rd = await safeJson(rr);
+      if (!rd || !rd.ok){ showFieldError('#userError', rd && rd.error ? rd.error : '注册失败'); return; }
+      loginMode = 'login';
+      $('#loginBtn').textContent = '登 录';
+      $('#loginToggle').innerHTML = '没有账号？<span>注册一个</span>';
+      $('#loginHint').textContent = '输入账号密码开始使用';
+    }
+    const r = await fetch('/api/login', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({username: username, password: password})
     });
-    const rd = await safeJson(rr);
-    if (!rd || !rd.ok){ alert(rd && rd.error ? rd.error : '注册失败'); return; }
-    loginMode = 'login';
-    $('#loginBtn').textContent = '登 录';
-    $('#loginToggle').innerHTML = '没有账号？<span>注册一个</span>';
-    $('#loginHint').textContent = '输入账号密码开始使用';
-  }
-  const r = await fetch('/api/login', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({username: username, password: password})
-  });
-  const d = await safeJson(r);
-  if (r.ok && d && d.ok){
-    currentUser = {username: d.username, role: d.role, is_admin: d.is_admin};
-    saveSavedLogin(username, password);
-    showApp();
-    loadFiles();
-    loadStats();
-    loadConversations();
-    renderSubNav();
-  } else {
-    alert('用户名或密码错误');
+    const d = await safeJson(r);
+    if (r.ok && d && d.ok){
+      currentUser = {username: d.username, role: d.role, is_admin: d.is_admin};
+      saveSavedLogin(username, password);
+      showApp();
+      loadFiles();
+      loadStats();
+      loadConversations();
+      renderSubNav();
+    } else {
+      showFieldError('#pwdError', '用户名或密码错误');
+      $('#password').focus();
+    }
+  } finally {
+    setLoginLoading(false);
   }
 });
 $('#username').addEventListener('keydown', e => { if (e.key === 'Enter') $('#loginBtn').click(); });
 $('#password').addEventListener('keydown', e => { if (e.key === 'Enter') $('#loginBtn').click(); });
+$('#togglePwd').addEventListener('click', () => {
+  const p = $('#password');
+  const show = p.type === 'password';
+  p.type = show ? 'text' : 'password';
+  $('#togglePwd').textContent = show ? '🙈' : '👁';
+  p.focus();
+});
+$('#username').addEventListener('input', () => showFieldError('#userError', ''));
+$('#password').addEventListener('input', () => showFieldError('#pwdError', ''));
 document.querySelectorAll('.login-field').forEach(f => f.addEventListener('click', () => {
   const i = f.querySelector('input');
   if (i) i.focus();
+}));
+document.querySelectorAll('.login-card input').forEach(i => i.addEventListener('focus', () => {
+  try { i.scrollIntoView({block: 'center', behavior: 'smooth'}); } catch(e){}
 }));
 $('#send').addEventListener('click', send);
 $('#input').addEventListener('keydown', e => { if (e.key === 'Enter') send(); });
