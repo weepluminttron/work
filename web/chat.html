@@ -75,15 +75,24 @@
   #input:focus { border-color: var(--primary); }
   #send { background: linear-gradient(135deg, var(--primary), var(--primary-2)); color: #fff; border: none; border-radius: 20px; padding: 10px 18px; font-size: 15px; cursor: pointer; }
   #attach { background: var(--primary-soft); color: var(--primary); border: none; border-radius: 20px; padding: 8px 12px; font-size: 16px; cursor: pointer; }
-  .login { position: fixed; inset: 0; background: linear-gradient(135deg, var(--primary), var(--primary-2)); display: flex; align-items: center; justify-content: center; }
-  .login-card { background: var(--card); color: var(--text); border-radius: var(--radius); padding: 28px 24px; width: 82%; max-width: 340px; text-align: center; box-shadow: 0 12px 32px rgba(0, 0, 0, .18); }
-  .login-card h1 { font-size: 20px; margin-bottom: 6px; }
-  .login-card p { color: var(--text-2); font-size: 13px; margin-bottom: 18px; }
-  .login-card input { width: 100%; border: 1px solid var(--border-2); border-radius: 10px; padding: 11px; font-size: 15px; margin-bottom: 12px; outline: none; background: var(--input-bg); color: var(--text); }
-  .remember-row { display: flex; flex-wrap: wrap; gap: 10px 16px; justify-content: center; margin-bottom: 12px; font-size: 13px; color: var(--text-2); }
-  .remember-row label { display: flex; align-items: center; gap: 4px; cursor: pointer; }
-  .login-card button { width: 100%; background: linear-gradient(135deg, var(--primary), var(--primary-2)); color: #fff; border: none; border-radius: 10px; padding: 11px; font-size: 15px; cursor: pointer; }
-  .login-toggle { margin-top: 12px; font-size: 13px; color: var(--text-2); }
+  .login { position: fixed; inset: 0; background: radial-gradient(120% 90% at 50% 0%, rgba(255, 255, 255, .18), transparent 60%), linear-gradient(180deg, var(--primary), var(--primary-2)); display: flex; align-items: center; justify-content: center; }
+  .login-card { background: var(--card); color: var(--text); border-radius: 20px; padding: 32px 26px 26px; width: 84%; max-width: 350px; text-align: center; box-shadow: 0 18px 48px rgba(0, 0, 0, .22); }
+  .login-card h1 { font-size: 18px; font-weight: 700; margin-bottom: 4px; }
+  .login-sub { color: #8890A6; font-size: 13px; margin-bottom: 20px; }
+  .login-field { position: relative; margin-bottom: 12px; }
+  .login-field .field-icon { position: absolute; left: 13px; top: 50%; transform: translateY(-50%); font-size: 15px; opacity: .65; pointer-events: none; }
+  .login-card input { width: 100%; font-family: inherit; border: 1px solid transparent; border-radius: 12px; padding: 12px 14px 12px 40px; font-size: 15px; outline: none; background: #F5F7FA; color: var(--text); transition: box-shadow .2s, border-color .2s, background .2s; }
+  .login-card input:focus { background: var(--card); border-color: var(--primary); box-shadow: 0 0 0 3px rgba(74, 125, 255, .15); }
+  .login-card input:-webkit-autofill { -webkit-box-shadow: 0 0 0 1000px #F5F7FA inset; -webkit-text-fill-color: var(--text); font-family: inherit; }
+  .remember-row { display: flex; flex-wrap: nowrap; gap: 6px; justify-content: space-between; margin-bottom: 16px; font-size: 12px; color: var(--text-2); }
+  .remember-row label { display: flex; align-items: center; gap: 5px; cursor: pointer; white-space: nowrap; }
+  .remember-row input[type="checkbox"] { appearance: none; -webkit-appearance: none; width: 30px; height: 18px; border-radius: 9px; background: #d5dbe8; position: relative; margin: 0; cursor: pointer; transition: background .2s; }
+  .remember-row input[type="checkbox"]::after { content: ''; position: absolute; width: 14px; height: 14px; border-radius: 50%; background: #fff; top: 2px; left: 2px; transition: left .2s; box-shadow: 0 1px 3px rgba(0, 0, 0, .2); }
+  .remember-row input[type="checkbox"]:checked { background: var(--primary); }
+  .remember-row input[type="checkbox"]:checked::after { left: 14px; }
+  .login-card button { width: 100%; background: linear-gradient(135deg, var(--primary), var(--primary-2)); color: #fff; border: none; border-radius: 12px; padding: 12px; font-size: 15px; font-weight: 600; cursor: pointer; box-shadow: 0 8px 18px rgba(74, 125, 255, .35); }
+  .login-card button:active { transform: scale(.98); }
+  .login-toggle { margin-top: 14px; font-size: 13px; color: var(--text-2); }
   .login-toggle span { color: var(--primary); cursor: pointer; font-weight: 600; }
   .hidden { display: none !important; }
   #logout, #themeBtn { margin-left: auto; background: rgba(255, 255, 255, .2); border: none; color: #fff; border-radius: 12px; padding: 5px 10px; font-size: 12px; cursor: pointer; }
@@ -296,7 +305,7 @@
   }
 
   /* ===== 学习助手吉祥物 ===== */
-  .login-mascot { width: 76px; height: 76px; border-radius: 20px; margin: 0 auto 12px; display: block; box-shadow: var(--shadow); }
+  .login-mascot { width: 76px; height: 76px; border-radius: 20px; margin: 0 auto 14px; display: block; box-shadow: 0 0 0 4px rgba(255, 255, 255, .35), var(--shadow); }
   .logo img { width: 100%; height: 100%; border-radius: 9px; display: block; }
   .msg.bot::before { content: ''; background: url('/mascot.png') center/cover no-repeat; border-radius: 50%; }
   .drop-overlay { position: fixed; inset: 0; z-index: 80; background: rgba(74, 125, 255, .15); display: flex; align-items: center; justify-content: center; pointer-events: none; }
@@ -320,9 +329,15 @@
   <div class="login-card">
     <img class="login-mascot" src="/mascot.png" alt="学习助手">
     <h1>📚 学习助手</h1>
-    <p id="loginHint">输入账号密码开始使用</p>
-    <input id="username" placeholder="用户名" autocomplete="username">
-    <input id="password" type="password" placeholder="访问密码" autocomplete="current-password">
+    <p id="loginHint" class="login-sub">输入账号密码开始使用</p>
+    <div class="login-field">
+      <span class="field-icon">👤</span>
+      <input id="username" placeholder="用户名" autocomplete="username">
+    </div>
+    <div class="login-field">
+      <span class="field-icon">🔒</span>
+      <input id="password" type="password" placeholder="访问密码" autocomplete="current-password">
+    </div>
     <div class="remember-row" id="rememberRow">
       <label><input type="checkbox" id="rememberUser"> 记住账号</label>
       <label><input type="checkbox" id="rememberPwd"> 记住密码</label>
