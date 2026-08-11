@@ -4,7 +4,7 @@ import sys
 import tempfile
 import types
 import unittest
-from datetime import datetime, timedelta
+from datetime import datetime
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 

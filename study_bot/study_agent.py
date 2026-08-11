@@ -8,8 +8,6 @@ from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 from openai import OpenAI
 import telebot
-from scipy.special import expit
-
 # 加载环境变量
 load_dotenv()
 # 新版 openai SDK 改用客户端方式（openai>=1.0 已移除 openai.ChatCompletion 旧接口）
