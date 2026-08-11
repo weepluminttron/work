@@ -76,31 +76,32 @@
   #send { background: linear-gradient(135deg, var(--primary), var(--primary-2)); color: #fff; border: none; border-radius: 20px; padding: 10px 18px; font-size: 15px; cursor: pointer; }
   #attach { background: var(--primary-soft); color: var(--primary); border: none; border-radius: 20px; padding: 8px 12px; font-size: 16px; cursor: pointer; }
   .login { position: fixed; inset: 0; overflow-y: auto; background: radial-gradient(120% 90% at 50% 0%, rgba(255, 255, 255, .18), transparent 60%), linear-gradient(180deg, var(--primary), var(--primary-2)); display: flex; align-items: center; justify-content: center; }
-  .login-card { background: var(--card); color: var(--text); border-radius: 20px; padding: 32px 26px 26px; width: 84%; max-width: 350px; max-height: calc(100vh - 24px); overflow-y: auto; text-align: center; box-shadow: 0 18px 48px rgba(0, 0, 0, .22); }
-  .login-card h1 { font-size: 18px; font-weight: 700; margin-bottom: 6px; }
-  .login-sub { color: #8890A6; font-size: 13px; margin-bottom: 22px; }
+  .login-card { background: var(--card); color: var(--text); border-radius: 20px; padding: 34px 26px 26px; width: 84%; max-width: 350px; max-height: calc(100vh - 24px); overflow-y: auto; text-align: center; box-shadow: 0 18px 48px rgba(0, 0, 0, .22); }
+  .login-card h1 { font-size: 18px; font-weight: 700; margin-bottom: 8px; }
+  .login-sub { color: #8890A6; font-size: 13px; margin-bottom: 24px; }
   .login-field { position: relative; margin-bottom: 12px; }
   .login-field .field-icon { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); font-size: 15px; opacity: .65; pointer-events: none; }
-  .login-card input { width: 100%; font-family: inherit; font-weight: 400; border: 1px solid transparent; border-radius: 12px; padding: 12px 14px 12px 44px; font-size: 15px; outline: none; background: #F5F7FA; color: var(--text); transition: box-shadow .2s, border-color .2s, background .2s; }
-  .login-card input:focus { background: var(--card); border-color: var(--primary); box-shadow: 0 0 0 3px rgba(74, 125, 255, .15); }
+  .login-card input { width: 100%; font-family: inherit; font-weight: 400; border: 1px solid transparent; border-radius: 12px; padding: 12px 14px 12px 44px; font-size: 15px; outline: none; background: #F5F7FA !important; color: var(--text); caret-color: var(--text); transition: box-shadow .2s, border-color .2s, background .2s; }
+  .login-card input:focus { background: #fff !important; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(74, 125, 255, .15); }
   .login-card input:-webkit-autofill,
   .login-card input:-webkit-autofill:hover,
   .login-card input:-webkit-autofill:focus {
     -webkit-box-shadow: 0 0 0 1000px #F5F7FA inset !important;
+    background-color: #F5F7FA !important;
     -webkit-text-fill-color: var(--text);
-    font-family: inherit;
+    caret-color: var(--text);
     transition: background-color 9999s ease-out 0s;
   }
   #password { padding-right: 42px; }
   .pwd-eye { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); border: none; background: none; font-size: 15px; cursor: pointer; opacity: .6; padding: 6px; }
   .field-error { color: #e5484d; font-size: 12px; text-align: left; margin: -6px 0 10px 40px; }
-  .remember-row { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; margin-bottom: 18px; font-size: 12px; color: var(--text-2); }
+  .remember-row { display: flex; flex-direction: column; align-items: flex-start; gap: 14px; margin-bottom: 18px; font-size: 12px; color: var(--text-2); }
   .remember-row label { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }
   .switch { width: 34px; height: 20px; border-radius: 10px; background: #d5dbe8; position: relative; display: inline-block; flex: 0 0 auto; transition: background .2s; }
   .switch::after { content: ''; position: absolute; width: 16px; height: 16px; border-radius: 50%; background: #fff; top: 2px; left: 2px; transition: left .2s; box-shadow: 0 1px 3px rgba(0, 0, 0, .2); }
   .remember-row input:checked + .switch { background: var(--primary); }
   .remember-row input:checked + .switch::after { left: 16px; }
-  .login-card button { width: 100%; background: linear-gradient(135deg, var(--primary), var(--primary-2)); color: #fff; border: none; border-radius: 12px; padding: 12px; font-size: 15px; font-weight: 600; cursor: pointer; box-shadow: 0 6px 14px rgba(0, 0, 0, .15); }
+  .login-card button { width: 100%; background: linear-gradient(135deg, var(--primary), var(--primary-2)); color: #fff; border: none; border-radius: 12px; padding: 12px; font-size: 15px; font-weight: 600; cursor: pointer; box-shadow: 0 4px 14px rgba(0, 0, 0, .18); }
   .login-card button:disabled { opacity: .7; cursor: default; }
   .login-card button:active { transform: scale(.98); }
   .login-toggle { margin-top: 14px; font-size: 13px; color: var(--text-2); }
@@ -325,7 +326,7 @@
   }
 
   /* ===== 学习助手吉祥物 ===== */
-  .login-mascot { width: 76px; height: 76px; border-radius: 20px; margin: 0 auto 16px; display: block; box-shadow: 0 0 0 4px rgba(255, 255, 255, .35), var(--shadow); }
+  .login-mascot { width: 76px; height: 76px; border-radius: 20px; margin: 0 auto 20px; display: block; box-shadow: 0 0 0 4px rgba(255, 255, 255, .35), var(--shadow); }
   .logo img { width: 100%; height: 100%; border-radius: 9px; display: block; }
   .msg.bot::before { content: ''; background: url('/mascot.png') center/cover no-repeat; border-radius: 50%; }
   .drop-overlay { position: fixed; inset: 0; z-index: 80; background: rgba(74, 125, 255, .15); display: flex; align-items: center; justify-content: center; pointer-events: none; }
