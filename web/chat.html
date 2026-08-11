@@ -92,8 +92,10 @@
     caret-color: var(--text);
     transition: background-color 9999s ease-out 0s;
   }
-  #password { padding-right: 42px; }
-  .pwd-eye { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); border: none; background: none; font-size: 15px; cursor: pointer; opacity: .6; padding: 6px; }
+  #password { padding-right: 48px; }
+  .pwd-eye { position: absolute; right: 5px; top: 50%; transform: translateY(-50%); width: 38px; height: 38px; display: inline-flex; align-items: center; justify-content: center; border: none; background: none; font-size: 16px; line-height: 1; cursor: pointer; border-radius: 50%; color: #9aa3b2; transition: color .2s, background .2s; }
+  .pwd-eye.showing { color: var(--primary); }
+  .pwd-eye:active { background: rgba(0, 0, 0, .06); }
   .field-error { color: #e5484d; font-size: 12px; text-align: left; margin: -6px 0 10px 40px; }
   .remember-row { display: flex; flex-direction: column; align-items: flex-start; gap: 14px; margin-bottom: 18px; font-size: 12px; color: var(--text-2); }
   .remember-row label { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }
@@ -1776,6 +1778,7 @@ $('#togglePwd').addEventListener('click', () => {
   const show = p.type === 'password';
   p.type = show ? 'text' : 'password';
   $('#togglePwd').textContent = show ? '🙈' : '👁';
+  $('#togglePwd').classList.toggle('showing', show);
   p.focus();
 });
 $('#username').addEventListener('input', () => showFieldError('#userError', ''));
